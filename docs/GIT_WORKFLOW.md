@@ -23,28 +23,36 @@ In the **"Target branches"** section:
 1. Click **"Add target"**
 2. Select **"Default"** (this targets your main branch automatically)
 
-#### 4. Configure Protection Rules
+#### 4. Configure Branch Rules
 
-**✅ Essential Rules (check the ones you see available):**
+**✅ Essential Rules (Recommended Settings):**
 
-**Pull Request Rules:**
-- ☑️ **"Require a pull request before merging"**
-  - If available, set **"Required number of approvals"** to: `1`
-  - ☑️ **"Dismiss stale pull request approvals when new commits are pushed"** (if available)
+**Core Protection:**
+- ☑️ **"Require a pull request before merging"** ⭐ **MOST IMPORTANT**
+  - Click **"Show additional settings"** to configure:
+    - Set **"Required number of approvals"** to: `1`
+    - Consider enabling **"Dismiss stale pull request approvals when new commits are pushed"**
 
 **Branch Protection:**
-- ☑️ **"Restrict pushes"** (if available)
-- ☑️ **"Restrict deletions"** (if available)
+- ☑️ **"Restrict deletions"** - **Recommended**
+  - Prevents accidental deletion of the main branch
 
-**Additional Options (if available):**
-- ☑️ **"Require status checks to pass"** (can be configured later when CI is set up)
-- ☑️ **"Require conversation resolution before merging"**
-- ☑️ **"Require linear history"** (prevents merge commits - optional)
-- ☑️ **"Block force pushes"** (if available)
+- ☑️ **"Block force pushes"** - **Recommended**
+  - Prevents force pushes that could rewrite history
 
-**File Size Restrictions (if available):**
-- ☑️ **"Restrict pushes that create files larger than a specified size"**
-  - Set size limit to: `100 MB` (if this option exists)
+**Additional Security:**
+- ☑️ **"Restrict updates"** - **Optional but useful**
+  - Only allows users with bypass permission to update matching refs
+
+**🔧 Optional Rules (can enable later):**
+- ☑️ **"Require linear history"** - Forces rebase workflow, prevents merge commits
+- ☑️ **"Require signed commits"** - Requires GPG-signed commits
+- ☑️ **"Require code scanning results"** - Can add when code scanning is set up
+
+**❌ Skip These for Now:**
+- ⬜ **"Require status checks to pass"** - ⚠️ **Skip until CI/CD is set up** (requires specific status checks)
+- ⬜ **"Restrict creations"** - Not needed for main branch protection
+- ⬜ **"Require deployments to succeed"** - Not applicable without deployment setup
 
 #### 5. Save Configuration
 1. Review your settings
@@ -52,17 +60,15 @@ In the **"Target branches"** section:
 
 ### 🎯 Minimum Essential Protection
 
-**If you only see a few options, focus on these core protections:**
+**Core protection for the AutoEncoder project:**
 
-1. **"Require a pull request before merging"** - This is the most important one
-2. **"Restrict pushes"** or **"Restrict deletions"** - Prevents direct changes to main
-3. Any approval requirements (set to 1 if available)
+1. **"Require a pull request before merging"** - Prevents direct pushes to main
+2. **"Restrict deletions"** - Prevents accidental branch deletion
+3. **"Block force pushes"** - Prevents history rewriting
 
-**Don't worry if you don't see all the options listed** - GitHub's interface varies by:
-- Repository type (public vs private)
-- GitHub plan (free vs paid)
-- Account permissions
-- Interface updates
+These three rules provide excellent protection for your main branch without requiring CI/CD setup.
+
+**Note:** We'll add "Require status checks to pass" later when we implement automated testing and CI/CD pipelines.
 
 ### Alternative: Classic Branch Protection Rules
 
@@ -308,5 +314,5 @@ For questions about the Git workflow:
 ---
 
 **Last Updated:** 2025-05-27  
-**Version:** 1.2  
-**Status:** ✅ Active - Updated for realistic GitHub Branch Rulesets options 
+**Version:** 1.3  
+**Status:** ✅ Active - Updated with exact GitHub Branch Rulesets interface options 

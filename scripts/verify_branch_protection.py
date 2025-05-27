@@ -83,12 +83,19 @@ def check_branch_protection_status():
     print("   ☐ Navigate to: https://github.com/Zanzagar/AutoEncoder_Experimentation/settings/branches")
     print("   ☐ Look for 'Branch rulesets' section")
     print("   ☐ Click 'Add branch ruleset' if no rulesets exist")
-    print("   ☐ Verify 'main' branch has protection rules configured")
-    print("   ☐ Check 'Require a pull request before merging' is enabled")
-    print("   ☐ Check 'Require status checks to pass' is enabled")
-    print("   ☐ Check 'Require branches to be up to date before merging' is enabled")
-    print("   ☐ Check 'Block pushes that create files larger than specified size' is enabled")
     print("")
+    print("   🎯 Essential protections to enable (check what's available):")
+    print("   ☐ 'Require a pull request before merging' (MOST IMPORTANT)")
+    print("   ☐ 'Restrict pushes' or 'Restrict deletions'")
+    print("   ☐ Set required approvals to 1 (if available)")
+    print("")
+    print("   📋 Additional options (if available):")
+    print("   ☐ 'Require status checks to pass'")
+    print("   ☐ 'Require conversation resolution before merging'")
+    print("   ☐ 'Block force pushes'")
+    print("   ☐ 'Restrict file size' (100MB limit)")
+    print("")
+    print("   ℹ️  Don't worry if you don't see all options - GitHub varies by plan/repo type")
     print("   📖 For detailed setup instructions, see: docs/GIT_WORKFLOW.md")
     
     return True
@@ -119,9 +126,10 @@ def main():
     
     print("\n🎯 Next Steps:")
     print("   1. Complete GitHub branch ruleset setup if not done")
-    print("   2. Test by creating a feature branch and making a PR")
-    print("   3. Verify that direct pushes to main are blocked")
-    print("   4. Review docs/GIT_WORKFLOW.md for detailed instructions")
+    print("   2. Focus on 'Require pull request before merging' as minimum protection")
+    print("   3. Test by creating a feature branch and making a PR")
+    print("   4. Verify that direct pushes to main are blocked")
+    print("   5. Review docs/GIT_WORKFLOW.md for detailed instructions")
     
     print("\n✨ Branch protection verification complete!")
 

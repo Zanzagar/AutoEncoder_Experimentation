@@ -21,36 +21,48 @@ To ensure code quality and prevent accidental changes to the main branch, follow
 #### 3. Configure Target Branches
 In the **"Target branches"** section:
 1. Click **"Add target"**
-2. Select **"Include by name"**
-3. Enter: `main`
+2. Select **"Default"** (this targets your main branch automatically)
 
 #### 4. Configure Protection Rules
 
-**✅ Required Rules (check these boxes):**
+**✅ Essential Rules (check the ones you see available):**
+
+**Pull Request Rules:**
+- ☑️ **"Require a pull request before merging"**
+  - If available, set **"Required number of approvals"** to: `1`
+  - ☑️ **"Dismiss stale pull request approvals when new commits are pushed"** (if available)
 
 **Branch Protection:**
-- ☑️ **"Require a pull request before merging"**
-  - Set **"Required number of approvals before merging"** to: `1`
-  - ☑️ **"Dismiss stale pull request approvals when new commits are pushed"**
-  - ☑️ **"Require review from code owners"** (if you have a CODEOWNERS file)
+- ☑️ **"Restrict pushes"** (if available)
+- ☑️ **"Restrict deletions"** (if available)
 
-**Status Checks:**
-- ☑️ **"Require status checks to pass"**
-  - ☑️ **"Require branches to be up to date before merging"**
-  - Note: Specific status checks can be added later when CI is set up
-
-**Additional Rules:**
+**Additional Options (if available):**
+- ☑️ **"Require status checks to pass"** (can be configured later when CI is set up)
 - ☑️ **"Require conversation resolution before merging"**
-- ☑️ **"Require signed commits"** (optional, can enable later)
-- ☑️ **"Require linear history"** (optional, prevents merge commits)
+- ☑️ **"Require linear history"** (prevents merge commits - optional)
+- ☑️ **"Block force pushes"** (if available)
 
-**Push Restrictions:**
-- ☑️ **"Block pushes that create files larger than a specified size"**
-  - Set size limit to: `100 MB`
+**File Size Restrictions (if available):**
+- ☑️ **"Restrict pushes that create files larger than a specified size"**
+  - Set size limit to: `100 MB` (if this option exists)
 
 #### 5. Save Configuration
 1. Review your settings
 2. Click **"Create"** button to save the branch ruleset
+
+### 🎯 Minimum Essential Protection
+
+**If you only see a few options, focus on these core protections:**
+
+1. **"Require a pull request before merging"** - This is the most important one
+2. **"Restrict pushes"** or **"Restrict deletions"** - Prevents direct changes to main
+3. Any approval requirements (set to 1 if available)
+
+**Don't worry if you don't see all the options listed** - GitHub's interface varies by:
+- Repository type (public vs private)
+- GitHub plan (free vs paid)
+- Account permissions
+- Interface updates
 
 ### Alternative: Classic Branch Protection Rules
 
@@ -296,5 +308,5 @@ For questions about the Git workflow:
 ---
 
 **Last Updated:** 2025-05-27  
-**Version:** 1.1  
-**Status:** ✅ Active - Updated for GitHub Branch Rulesets 
+**Version:** 1.2  
+**Status:** ✅ Active - Updated for realistic GitHub Branch Rulesets options 

@@ -17,40 +17,111 @@ This project investigates how autoencoder neural networks represent different ty
 
 - ✅ TaskMaster-AI project management initialized
 - ✅ Git repository setup with comprehensive .gitignore
-- 🔄 Migrating from `AutoEncoderJupyterTest.ipynb` to modular Python package
-- 🔄 Creating four core wrapper functions for clean notebook interface
+- ✅ GitHub repository created and connected
+- ✅ Development environment configured
+- 🔄 Python package structure creation (in progress)
+
+## 🛠️ Development Environment Setup
+
+### Prerequisites
+- Python 3.9+ (Anaconda recommended)
+- Git
+- GitHub account
+
+### Quick Setup
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/Zanzagar/AutoEncoder_Experimentation.git
+   cd AutoEncoder_Experimentation
+   ```
+
+2. **Create and activate virtual environment**:
+   ```bash
+   # Windows
+   python -m venv venv
+   venv\Scripts\activate
+   
+   # macOS/Linux
+   python -m venv venv
+   source venv/bin/activate
+   ```
+
+3. **Install dependencies**:
+   ```bash
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+4. **Verify installation**:
+   ```bash
+   python -c "import torch, numpy, matplotlib; print('Environment setup successful!')"
+   ```
+
+### Core Dependencies
+
+- **Machine Learning**: PyTorch, NumPy, Scikit-learn
+- **Visualization**: Matplotlib, Seaborn, Plotly
+- **Data Processing**: Pandas, H5PY
+- **Development**: Jupyter, Black, Flake8, Pytest
+- **Dimensionality Reduction**: UMAP, t-SNE
 
 ## 📁 Project Structure
 
 ```
 AutoEncoder_Experimentation/
-├── autoencoder_lib/          # Target Python package (to be created)
-│   ├── data/                 # Dataset generation and loading utilities
-│   ├── models/               # Autoencoder architecture definitions
-│   ├── experiment/           # Training and experiment management
-│   ├── visualization/        # Visualization functions and utilities
-│   └── utils/                # Helper functions and utilities
-├── scripts/                  # Project documentation and configuration
-│   ├── prd.txt              # Product Requirements Document
-│   └── task-complexity-report.json
+├── autoencoder_lib/          # Python package (to be created)
+│   ├── data/                 # Dataset generation and loading
+│   ├── models/               # Autoencoder architectures
+│   ├── experiment/           # Training and evaluation
+│   ├── visualization/        # Plotting and analysis
+│   └── utils/                # Helper functions
+├── notebooks/                # Jupyter interface notebooks
+├── scripts/                  # Utility scripts and PRD
 ├── tasks/                    # TaskMaster-AI task management
-├── AutoEncoderJupyterTest.ipynb    # Original implementation (reference)
-└── README.md                 # This file
+├── results/                  # Experiment outputs
+└── tests/                    # Unit tests
 ```
 
 ## 🔬 Research Datasets
 
-### Geological Datasets
-- **Consistent Layers**: Layered geological patterns with consistent properties
-- **Variable Layers**: Layered patterns with variable characteristics
-- Designed to test discrimination of subtle geological features
+### Current Datasets
+- **Geological Patterns**: Layered geological structures with varying complexity
+  - `consistent_layers/`: Regular geological patterns
+  - `variable_layers/`: Irregular geological patterns
 
-### Progressive Complexity
-- Starting with similar classes containing extremely subtle differences
-- Gradually adding more complex features to probe latent space thresholds
-- Framework designed to handle any generic dataset
+### Dataset Framework
+The framework is designed to handle any generic dataset with the following capabilities:
+- Automatic dataset generation with visualization
+- t-SNE projection analysis
+- Class-based example visualization
+- Configurable complexity levels
 
-## 🏗️ Target Architecture
+## 🧠 Autoencoder Architectures
+
+### Supported Architectures
+- **BasicAutoEncoder**: Simple encoder-decoder structure
+- **ConvolutionalAutoEncoder**: CNN-based architecture for image data
+- **VariationalAutoEncoder**: VAE for probabilistic latent representations
+- **DeepAutoEncoder**: Multi-layer deep architecture
+
+### Architecture Framework
+- Generic architecture interface
+- Configurable latent dimensions
+- Modular encoder/decoder components
+- Support for custom architectures
+
+## 🎮 Current Workflow (Jupyter Notebook)
+
+The existing workflow consists of 5 sequential code blocks:
+
+1. **Dataset Generation**: Creates datasets with visualization and class examples
+2. **Dataset Visualization**: t-SNE projection of input datasets
+3. **Model Definitions**: Autoencoder architectures and dataset handling
+4. **Experiment Execution**: Systematic exploration with specified parameters
+5. **Results Loading**: Retrieval and visualization of saved experiments
+
+## 🎯 Target Workflow (Python Package + Jupyter Interface)
 
 ### Four Core Wrapper Functions
 1. **Dataset Generation Wrapper**: Generate any generic dataset with visualization
@@ -58,44 +129,79 @@ AutoEncoder_Experimentation/
 3. **Experiment Runner Wrapper**: Systematic exploration of autoencoder models
 4. **Results Loader Wrapper**: Load and visualize results from saved experiments
 
-### Autoencoder Architectures
-- Standard symmetric autoencoders
-- Variational autoencoders (VAEs)
-- Convolutional autoencoders
-- Adversarial autoencoders
-- Sparse autoencoders
+## 📊 Experiment Configuration
 
-## 🛠️ Development Setup
+### High-Level Parameters
+- **Learning Rate**: Optimizer learning rate
+- **Architectures**: List of autoencoder architectures to test
+- **Random Seed**: Consistent reproducibility
+- **Latent Dimensions**: Range of latent space dimensions
+- **Dataset Path**: Input dataset location
+- **Output Directory**: Results storage location
 
-### Prerequisites
-- Python 3.8+
-- PyTorch
-- NumPy, Matplotlib, Scikit-learn
-- Jupyter Notebook
+## 🔍 Visualization Features
 
-### Installation (Coming Soon)
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/AutoEncoder_Experimentation.git
-cd AutoEncoder_Experimentation
+### Current Visualizations
+- Dataset class examples
+- t-SNE projections
+- Training/validation loss curves
+- Reconstruction quality comparisons
+- Latent space analysis
+- Performance grids
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+### Consistency Requirements
+- Identical visualizations between run and load operations
+- Consistent random seeds for reproducibility
+- Same image selection for reconstruction examples
+- Unified color schemes and layouts
 
-# Install dependencies
-pip install -r requirements.txt
-```
+## 🚧 Known Issues
 
-## 📊 Current Workflow (Jupyter Notebook)
+### Visualization Consistency Problems
+- t-SNE projections use different seeds between run and load operations
+- Training/test reconstruction visualizations show different images
+- Performance grid missing training data (currently only shows test data)
+- Run vs load visualizations are inconsistent
 
-The existing workflow consists of 5 sequential code blocks:
+## 🤝 Contributing
 
-1. **Dataset Generation**: Generates datasets with visualization and class examples
-2. **Dataset Visualization**: t-SNE projection visualization of specified dataset
-3. **Model Definitions**: Defines autoencoder architectures and model classes
-4. **Experiment Execution**: Systematic exploration with specified parameters
-5. **Results Loading**: Retrieves and visualizes results from saved experiments
+### Git Workflow
+- **Never commit directly to main branch**
+- Use feature branches: `feature/module-name`
+- Create pull requests for all merges
+- Follow commit message conventions
+
+### Branch Naming Conventions
+- `feature/migrate-data-module`: Data module migration
+- `feature/migrate-models-module`: Models module migration
+- `feature/migrate-experiment-module`: Experiment module migration
+- `feature/migrate-visualization-module`: Visualization module migration
+- `bugfix/visualization-consistency`: Fix visualization issues
+
+### Development Rules
+- All development in Python files within `autoencoder_lib` package
+- Jupyter notebooks serve only as clean interfaces
+- Preserve 100% of current functionality
+- Fix visualization consistency issues
+- Maintain reproducibility
+
+## 📈 TaskMaster-AI Integration
+
+This project uses TaskMaster-AI for project management:
+- Comprehensive task breakdown and tracking
+- AI-powered task complexity analysis
+- Dependency management
+- Progress monitoring
+
+## 📄 License
+
+MIT License - see LICENSE file for details.
+
+## 🔗 Links
+
+- **Repository**: https://github.com/Zanzagar/AutoEncoder_Experimentation
+- **Issues**: https://github.com/Zanzagar/AutoEncoder_Experimentation/issues
+- **TaskMaster-AI**: Integrated project management system
 
 ## 🎯 Migration Goals
 
@@ -123,31 +229,6 @@ This project uses [TaskMaster-AI](https://github.com/taskmaster-ai/taskmaster-ai
 
 View current tasks: `task-master list`
 Get next task: `task-master next`
-
-## 🤝 Contributing
-
-This project follows a strict Git workflow:
-
-1. **Feature Branches**: All development on feature branches
-2. **Descriptive Commits**: Clear, actionable commit messages
-3. **Pull Requests**: All merges via pull request review
-4. **No Direct Main Commits**: Main branch protected
-
-### Branch Naming Convention
-- `feature/migrate-data-module`
-- `feature/migrate-models-module`
-- `bugfix/visualization-consistency`
-- `docs/update-documentation`
-
-## 📄 License
-
-MIT License - see LICENSE file for details
-
-## 🔗 Related Work
-
-- Original Jupyter notebook implementation: `AutoEncoderJupyterTest.ipynb`
-- Backup implementation: `AutoEncoderJupyterTest_BACKUP.ipynb`
-- Project documentation: `scripts/prd.txt`
 
 ## 📞 Contact
 

@@ -2,37 +2,62 @@
 
 ## 🔒 Branch Protection Setup
 
-### GitHub Branch Protection Configuration
+### GitHub Branch Ruleset Configuration
 
-To ensure code quality and prevent accidental changes to the main branch, follow these steps to configure branch protection:
+To ensure code quality and prevent accidental changes to the main branch, follow these steps to configure branch protection using GitHub's current Branch Rulesets:
 
 #### 1. Access Branch Protection Settings
 1. Navigate to: https://github.com/Zanzagar/AutoEncoder_Experimentation
 2. Click **"Settings"** tab
 3. In the left sidebar, click **"Branches"**
 
-#### 2. Add Protection Rule for Main Branch
-1. Click **"Add rule"** button
-2. In **"Branch name pattern"**, enter: `main`
+#### 2. Add Branch Ruleset for Main Branch
+1. Click **"Add branch ruleset"** button
+2. Configure the ruleset:
+   - **Name**: Enter a descriptive name like "Main Branch Protection"
+   - **Enforcement status**: Select "Active"
+   - **Bypass list**: Leave empty (or add yourself if you need admin bypass during setup)
 
-#### 3. Configure Protection Settings
+#### 3. Configure Target Branches
+In the **"Target branches"** section:
+1. Click **"Add target"**
+2. Select **"Include by name"**
+3. Enter: `main`
 
-**✅ Required Settings:**
+#### 4. Configure Protection Rules
+
+**✅ Required Rules (check these boxes):**
+
+**Branch Protection:**
 - ☑️ **"Require a pull request before merging"**
-  - ☑️ **"Require approvals"** (set to 1 approval)
+  - Set **"Required number of approvals before merging"** to: `1`
   - ☑️ **"Dismiss stale pull request approvals when new commits are pushed"**
-- ☑️ **"Require status checks to pass before merging"**
+  - ☑️ **"Require review from code owners"** (if you have a CODEOWNERS file)
+
+**Status Checks:**
+- ☑️ **"Require status checks to pass"**
   - ☑️ **"Require branches to be up to date before merging"**
+  - Note: Specific status checks can be added later when CI is set up
+
+**Additional Rules:**
 - ☑️ **"Require conversation resolution before merging"**
-- ☑️ **"Restrict pushes that create files larger than 100 MB"**
+- ☑️ **"Require signed commits"** (optional, can enable later)
+- ☑️ **"Require linear history"** (optional, prevents merge commits)
 
-**⚠️ Optional Settings (can be enabled later):**
-- ⬜ "Require signed commits"
-- ⬜ "Require linear history"
-- ⬜ "Include administrators" (leave unchecked during setup)
+**Push Restrictions:**
+- ☑️ **"Block pushes that create files larger than a specified size"**
+  - Set size limit to: `100 MB`
 
-#### 4. Save Configuration
-Click **"Create"** button to save the protection rule.
+#### 5. Save Configuration
+1. Review your settings
+2. Click **"Create"** button to save the branch ruleset
+
+### Alternative: Classic Branch Protection Rules
+
+If you prefer the classic interface or don't see Branch Rulesets:
+1. Look for **"Branch protection rules"** section on the same page
+2. Click **"Add rule"** (if available)
+3. Follow the original process with branch name pattern: `main`
 
 ## 🔄 Development Workflow
 
@@ -271,5 +296,5 @@ For questions about the Git workflow:
 ---
 
 **Last Updated:** 2025-05-27  
-**Version:** 1.0  
-**Status:** ✅ Active 
+**Version:** 1.1  
+**Status:** ✅ Active - Updated for GitHub Branch Rulesets 

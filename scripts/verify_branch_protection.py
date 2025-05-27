@@ -81,10 +81,15 @@ def check_branch_protection_status():
     # This is a basic check - full verification requires GitHub API access
     print("📋 Branch protection verification checklist:")
     print("   ☐ Navigate to: https://github.com/Zanzagar/AutoEncoder_Experimentation/settings/branches")
-    print("   ☐ Verify 'main' branch has protection rules")
+    print("   ☐ Look for 'Branch rulesets' section")
+    print("   ☐ Click 'Add branch ruleset' if no rulesets exist")
+    print("   ☐ Verify 'main' branch has protection rules configured")
     print("   ☐ Check 'Require a pull request before merging' is enabled")
-    print("   ☐ Check 'Require status checks to pass before merging' is enabled")
+    print("   ☐ Check 'Require status checks to pass' is enabled")
     print("   ☐ Check 'Require branches to be up to date before merging' is enabled")
+    print("   ☐ Check 'Block pushes that create files larger than specified size' is enabled")
+    print("")
+    print("   📖 For detailed setup instructions, see: docs/GIT_WORKFLOW.md")
     
     return True
 
@@ -113,9 +118,10 @@ def main():
     demonstrate_proper_workflow()
     
     print("\n🎯 Next Steps:")
-    print("   1. Complete GitHub branch protection setup if not done")
+    print("   1. Complete GitHub branch ruleset setup if not done")
     print("   2. Test by creating a feature branch and making a PR")
     print("   3. Verify that direct pushes to main are blocked")
+    print("   4. Review docs/GIT_WORKFLOW.md for detailed instructions")
     
     print("\n✨ Branch protection verification complete!")
 

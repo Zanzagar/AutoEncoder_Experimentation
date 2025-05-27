@@ -1,0 +1,7 @@
+include README.md
+include requirements.txt
+include LICENSE
+recursive-include autoencoder_lib *.py
+recursive-include docs *.md
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co] 

@@ -1,0 +1,56 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# AutoEncoder Experimentation Project Overview
+
+This project investigates how autoencoder neural networks represent different types of images and geometric features in the latent space. The primary goal is to understand latent space discrimination capabilities, determine when the latent space breaks down, and identify the minimum set of latent features needed to discriminate between different classes of images.
+
+## Current Status
+
+- Basic autoencoder implementation exists in `AutoEncoderJupyterTest.ipynb`
+- Initial experiments with geological datasets have been conducted
+- Several autoencoder architectures have been tested with different latent dimensions
+- Results are stored in `latent_dim_exploration_results_layered_geology/`
+
+## Immediate Focus
+
+1. Fix bugs in the current notebook implementation
+2. Reorganize code to create a flexible wrapper that can:
+   - Accept any dataset directory as input
+   - Support multiple autoencoder architectures
+   - Store results in configurable directories
+
+## Project Structure
+
+- [AutoEncoderJupyterTest.ipynb](mdc:AutoEncoderJupyterTest.ipynb): Main notebook for autoencoder experimentation
+- [AutoEncoderJupyterTest_BACKUP.ipynb](mdc:AutoEncoderJupyterTest_BACKUP.ipynb): Backup of the main notebook
+
+## Datasets
+
+The project uses progressively complex datasets:
+- Starting with similar classes containing extremely subtle differences
+- Gradually adding more complex features to probe latent space discrimination thresholds
+- Includes geological datasets as one case study:
+  - `layered_geologic_patterns_dataset/consistent_layers/`
+  - `layered_geologic_patterns_dataset/variable_layers/`
+- Will expand to include multiple datasets with varying feature complexity
+
+## Research Goals
+
+- Explore how different autoencoder architectures represent features in latent space
+- Identify when latent space discrimination breaks down for specific features and image types
+- Determine the minimum set of latent features required for effective discrimination
+- Analyze how incrementally complex features are encoded in the latent space
+
+## Results
+
+Experimental results are stored in:
+- `latent_dim_exploration_results_layered_geology/`: Results from exploring different latent dimensions
+- Additional result directories will be created for each dataset/architecture combination
+
+
+
+
+

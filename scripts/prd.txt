@@ -1,0 +1,519 @@
+# Product Requirements Document (PRD)
+# AutoEncoder Experimentation Framework Migration
+
+## 1. Executive Summary
+
+### 1.1 Project Overview
+The AutoEncoder Experimentation Framework is a research tool designed to investigate how autoencoder neural networks represent different types of images and geometric features in latent space. The primary research goal is to understand latent space discrimination capabilities, determine when the latent space breaks down, and identify the minimum set of latent features needed to discriminate between different classes of images.
+
+### 1.2 Current State
+- Working implementation exists in `AutoEncoderJupyterTest.ipynb` with 5 sequential code blocks
+- Initial experiments with geological datasets completed
+- Multiple autoencoder architectures tested with different latent dimensions
+- Results stored in `latent_dim_exploration_results_layered_geology/`
+- Framework is functional but requires migration to maintainable Python package structure
+- **Critical Need**: Proper version control workflow must be established for migration
+
+### 1.3 Business Justification
+The current Jupyter notebook approach has become unwieldy for systematic research. Migration to a Python package with proper Git workflow will:
+- Enable reproducible research with consistent visualization
+- Support generic datasets and architectures
+- Facilitate collaboration and code reuse through version control
+- Provide a clean interface for complex experiments
+- Enable systematic debugging and testing with change tracking
+- Ensure code integrity and backup through Git repository management
+
+## 2. Product Vision and Goals
+
+### 2.1 Vision Statement
+Create a modular, extensible Python package that enables systematic exploration of autoencoder latent space discrimination capabilities across any dataset and architecture, with reproducible visualizations, comprehensive analysis tools, and robust version control practices.
+
+### 2.2 Primary Goals
+1. **Migration Completeness**: Preserve 100% of current functionality during migration
+2. **Generalization**: Support any generic dataset and autoencoder architecture
+3. **Reproducibility**: Ensure identical visualizations between run and load operations
+4. **Maintainability**: Clean, modular code structure for future development
+5. **Usability**: Simple, intuitive interface for complex experiments
+6. **Version Control**: Establish robust Git workflow for all development activities
+
+### 2.3 Success Metrics
+- All current notebook functionality migrated without loss
+- Four wrapper functions working correctly in new notebook interface
+- All visualization consistency issues resolved
+- Run and load operations produce identical visualizations
+- Package handles any generic dataset and architecture
+- New workflow is cleaner and more maintainable than current approach
+- **Git workflow**: All code changes tracked with descriptive commits and feature branches
+
+## 3. User Requirements
+
+### 3.1 Primary Users
+- **Research Scientists**: Conducting latent space discrimination studies
+- **Machine Learning Engineers**: Experimenting with autoencoder architectures
+- **Data Scientists**: Analyzing complex datasets with autoencoders
+- **Collaborators**: Working together on the codebase through version control
+
+### 3.2 User Stories
+
+#### 3.2.1 Dataset Generation and Visualization
+- **As a researcher**, I want to generate any generic dataset with automatic visualization so that I can quickly create and understand my experimental data
+- **As a data scientist**, I want to visualize dataset projections using t-SNE so that I can understand the inherent structure of my data before training
+
+#### 3.2.2 Experiment Execution
+- **As a machine learning engineer**, I want to systematically explore multiple autoencoder architectures with different latent dimensions so that I can identify optimal configurations
+- **As a researcher**, I want to specify high-level parameters (learning rate, architectures, random seed, latent dimensions) so that I can control my experiments precisely
+
+#### 3.2.3 Results Analysis
+- **As a researcher**, I want to load and visualize results from previous experiments so that I can compare different approaches
+- **As a data scientist**, I want identical visualizations between run and load operations so that I can trust my comparative analysis
+
+#### 3.2.4 Version Control and Collaboration
+- **As a developer**, I want to work on feature branches so that I can develop safely without breaking the main codebase
+- **As a collaborator**, I want to track all changes through Git so that I can understand the evolution of the codebase
+- **As a researcher**, I want to recover from mistakes easily so that I can experiment confidently
+
+### 3.3 User Workflows
+
+#### 3.3.1 Current Workflow (5 Sequential Blocks)
+1. **Dataset Generation**: Generate datasets with visualization and class examples
+2. **Dataset Visualization**: t-SNE projection visualization of specified dataset
+3. **Model Definitions**: Define autoencoder architectures and model classes (no output)
+4. **Experiment Execution**: Systematic exploration with specified parameters
+5. **Results Loading**: Retrieve and visualize results from saved experiments
+
+#### 3.3.2 Target Workflow (4 Wrapper Functions + Git Integration)
+1. **Dataset Generation Wrapper**: Generate any generic dataset with visualization
+2. **Dataset Visualization Wrapper**: t-SNE projection and dataset analysis
+3. **Experiment Runner Wrapper**: Systematic exploration of autoencoder models
+4. **Results Loader Wrapper**: Load and visualize results from saved experiments
+
+**Git Workflow Integration**:
+- Start work session: `git checkout main && git pull origin main && git checkout -b feature/task`
+- Save progress: `git add . && git commit -m "Descriptive message"`
+- Backup work: `git push origin feature/task`
+- Merge changes: Create pull request for code review
+
+## 4. Functional Requirements
+
+### 4.1 Version Control Requirements
+
+#### 4.1.1 Git Repository Setup
+- Initialize Git repository with proper .gitignore for Python projects
+- Set up GitHub repository for remote backup and collaboration
+- Establish main branch as stable, working code only
+- Configure branch protection rules to prevent direct commits to main
+
+#### 4.1.2 Branch Management Strategy
+**Branch Naming Conventions**:
+- `feature/migrate-data-module`: Data module migration
+- `feature/migrate-models-module`: Models module migration
+- `feature/migrate-experiment-module`: Experiment module migration
+- `feature/migrate-visualization-module`: Visualization module migration
+- `feature/create-wrapper-functions`: Four core wrapper functions
+- `bugfix/visualization-consistency`: Fix visualization consistency issues
+- `bugfix/seed-consistency`: Fix random seed consistency
+- `docs/update-documentation`: Documentation updates
+
+**Branch Lifecycle**:
+- Create feature branch from latest main
+- Develop and test functionality
+- Commit working code with descriptive messages
+- Push branch for backup
+- Create pull request for code review
+- Merge to main after approval
+- Delete feature branch after successful merge
+
+#### 4.1.3 Commit Guidelines
+**Commit Frequency**:
+- After each module migration is complete and tested
+- After each bug fix is verified
+- After each wrapper function is working correctly
+- Before risky refactoring or major changes
+- At end of each work session
+
+**Commit Message Standards**:
+- Use descriptive, action-oriented messages
+- Include context about what was changed and why
+- Examples:
+  - "Migrate dataset generation functions from notebook to data module"
+  - "Fix t-SNE seed consistency between run and load operations"
+  - "Add training data to performance grid visualization"
+  - "Create wrapper function for experiment execution"
+
+### 4.2 Core Package Structure
+
+#### 4.2.1 autoencoder_lib Package Organization
+```
+autoencoder_lib/
+├── data/                    # Dataset generation and loading utilities
+├── models/                  # Autoencoder architecture definitions and model classes
+├── experiment/              # Training, evaluation, and experiment management
+├── visualization/           # All visualization functions and utilities
+├── utils/                   # Helper functions and utilities
+└── __init__.py             # Package initialization and exports
+```
+
+#### 4.2.2 Module Specifications
+
+**Data Module (autoencoder_lib/data/)**
+- Dataset generation utilities for any generic dataset
+- Data loading and preprocessing functions
+- Dataset splitting with consistent random seeds
+- Support for geological datasets and extensible to other domains
+- Numpy array processing and normalization
+
+**Models Module (autoencoder_lib/models/)**
+- Multiple autoencoder architecture definitions:
+  - Standard symmetric autoencoders
+  - Variational autoencoders (VAEs)
+  - Convolutional autoencoders
+  - Adversarial autoencoders
+  - Sparse autoencoders
+- Model class definitions with consistent interfaces
+- Architecture registry mapping names to model classes
+- Flexible latent dimension configuration
+
+**Experiment Module (autoencoder_lib/experiment/)**
+- Training loop implementation with configurable parameters
+- Systematic exploration of latent dimensions and architectures
+- Model evaluation and metrics calculation
+- Experiment state management and checkpointing
+- Results saving and loading functionality
+
+**Visualization Module (autoencoder_lib/visualization/)**
+- t-SNE projection visualization with consistent seeding
+- Training and test reconstruction visualizations
+- Performance grids for silhouette scores and loss metrics
+- Latent space analysis and traversal visualizations
+- Consistent image selection for comparative analysis
+
+**Utils Module (autoencoder_lib/utils/)**
+- Configuration management and parameter validation
+- Random seed management for reproducibility
+- File I/O utilities for results and datasets
+- Logging and progress tracking
+- Helper functions for common operations
+
+### 4.3 Wrapper Function Specifications
+
+#### 4.3.1 Dataset Generation Wrapper
+**Function**: `generate_dataset(dataset_type, output_path, **kwargs)`
+**Purpose**: Generate any generic dataset with automatic visualization
+**Parameters**:
+- `dataset_type`: String identifier for dataset type
+- `output_path`: Directory path for saving generated dataset
+- `num_classes`: Number of classes to generate
+- `samples_per_class`: Number of samples per class
+- `image_size`: Tuple specifying image dimensions
+- `random_seed`: Seed for reproducible generation
+- `visualization`: Boolean to enable/disable automatic visualization
+
+**Outputs**:
+- Generated dataset saved to specified path
+- Visualization showing examples from each class
+- Dataset metadata and statistics
+
+#### 4.3.2 Dataset Visualization Wrapper
+**Function**: `visualize_dataset(dataset_path, **kwargs)`
+**Purpose**: Create t-SNE projection and analysis of existing dataset
+**Parameters**:
+- `dataset_path`: Path to dataset_info.npy file
+- `tsne_seed`: Random seed for t-SNE projection
+- `perplexity`: t-SNE perplexity parameter
+- `n_components`: Number of dimensions for projection
+- `save_path`: Optional path to save visualization
+
+**Outputs**:
+- t-SNE projection plot with class labels
+- Dataset statistics and class distribution
+- Feature analysis summary
+
+#### 4.3.3 Experiment Runner Wrapper
+**Function**: `run_experiments(dataset_path, output_dir, **kwargs)`
+**Purpose**: Systematic exploration of autoencoder models
+**Parameters**:
+- `dataset_path`: Path to dataset for training
+- `output_dir`: Directory for saving results
+- `architectures`: List of architecture names to test
+- `latent_dimensions`: List of latent dimensions to explore
+- `learning_rate`: Learning rate for training
+- `batch_size`: Batch size for training
+- `epochs`: Number of training epochs
+- `random_seed`: Seed for reproducible training
+
+**Outputs**:
+- Trained models saved with metadata
+- Training and validation loss curves
+- Reconstruction visualizations (2 images per class)
+- Performance grids for training and test data
+- Latent space analysis and t-SNE projections
+
+#### 4.3.4 Results Loader Wrapper
+**Function**: `load_results(model_dir, dataset_dir, timestamp_dir, **kwargs)`
+**Purpose**: Load and visualize results from saved experiments
+**Parameters**:
+- `model_dir`: Directory containing saved models
+- `dataset_dir`: Directory containing original dataset
+- `timestamp_dir`: Specific timestamp directory for experiment
+- `visualization_seed`: Seed for consistent visualizations
+
+**Outputs**:
+- Identical visualizations to those generated during training
+- Model performance metrics and comparisons
+- Latent space analysis with same random seeds
+- Reconstruction examples using same images as training run
+
+### 4.4 Critical Bug Fixes and Improvements
+
+#### 4.4.1 Visualization Consistency Issues
+**Problem**: t-SNE projections use different seeds between run and load operations
+**Solution**: Implement consistent random state management with explicit seed parameters
+**Git Branch**: `bugfix/seed-consistency`
+
+**Problem**: Training/test reconstruction visualizations show different images
+**Solution**: Implement deterministic selection of 2 images per class with documented criteria
+**Git Branch**: `bugfix/image-selection-consistency`
+
+**Problem**: Performance grid missing training data
+**Solution**: Generate performance grids for both training and test data
+**Git Branch**: `feature/performance-grid-training-data`
+
+**Problem**: Run vs load visualizations are inconsistent
+**Solution**: Ensure identical visualization parameters and random seeds between operations
+**Git Branch**: `feature/visualization-validation`
+
+#### 4.4.2 Generalization Requirements
+**Requirement**: Support any generic dataset input
+**Implementation**: Abstract dataset interface with pluggable dataset generators
+**Git Branch**: `feature/generic-dataset-support`
+
+**Requirement**: Support any generic autoencoder architecture
+**Implementation**: Architecture registry with consistent model interface
+**Git Branch**: `feature/architecture-registry`
+
+**Requirement**: High-level parameter configuration
+**Implementation**: Configuration system with parameter validation and defaults
+**Git Branch**: `feature/parameter-system`
+
+## 5. Non-Functional Requirements
+
+### 5.1 Performance Requirements
+- Training time should not exceed current notebook implementation
+- Memory usage should be optimized for large datasets
+- Visualization generation should complete within reasonable time limits
+- Package import time should be minimal
+- Git operations should not significantly impact development workflow
+
+### 5.2 Reliability Requirements
+- All experiments must be reproducible with identical results
+- Package must handle errors gracefully with informative messages
+- Data integrity must be maintained throughout all operations
+- Visualization consistency must be 100% reliable
+- Version control must preserve complete change history
+
+### 5.3 Usability Requirements
+- New notebook interface should be intuitive for existing users
+- Parameter specification should be straightforward and well-documented
+- Error messages should be clear and actionable
+- Package installation should be simple and dependency-free where possible
+- Git workflow should be straightforward for researchers
+
+### 5.4 Maintainability Requirements
+- Code must follow Python best practices and PEP 8 standards
+- All functions must be documented with clear docstrings
+- Modular design must enable easy extension and modification
+- Testing framework must be in place for regression prevention
+- Version control history must be clean and informative
+
+### 5.5 Compatibility Requirements
+- Compatible with existing Python data science stack (NumPy, PyTorch, Matplotlib)
+- Works with current Jupyter notebook environment
+- Maintains compatibility with existing dataset formats
+- Supports both CPU and GPU training where applicable
+- Git workflow compatible with standard development practices
+
+## 6. Technical Specifications
+
+### 6.1 Version Control Technical Requirements
+
+#### 6.1.1 Repository Configuration
+- Initialize with appropriate .gitignore for Python projects
+- Configure Git LFS for large dataset files if needed
+- Set up branch protection rules on main branch
+- Configure automated testing on pull requests
+
+#### 6.1.2 Workflow Automation
+- Pre-commit hooks for code formatting and linting
+- Automated testing on feature branches
+- Pull request templates for consistent code review
+- Automated documentation generation
+
+#### 6.1.3 Emergency Recovery Procedures
+- Document recovery procedures for common Git mistakes
+- Implement backup strategies for critical work
+- Provide clear escalation paths for complex Git issues
+- Train team members on Git best practices
+
+### 6.2 Architecture Requirements
+
+#### 6.2.1 Autoencoder Architectures
+- **Standard Symmetric Autoencoders**: Mirror encoder/decoder structure
+- **Variational Autoencoders (VAEs)**: Probabilistic latent space representation
+- **Convolutional Autoencoders**: Spatial feature preservation for image data
+- **Adversarial Autoencoders**: Improved reconstruction quality
+- **Sparse Autoencoders**: Efficient sparse representations
+
+#### 6.2.2 Layer Types and Components
+- Convolutional layers for spatial feature extraction
+- Pooling layers for dimensionality reduction
+- Dense layers for bottleneck (latent space)
+- Transposed convolutional layers for upsampling
+- Activation functions and normalization layers
+
+#### 6.2.3 Loss Functions
+- Mean Squared Error (MSE) for basic reconstruction
+- Structural Similarity Index (SSIM) for structural feature preservation
+- Perceptual losses for better feature preservation
+- Custom loss functions for discriminative features
+- Classification-based loss terms for enhanced discrimination
+
+### 6.3 Dataset Requirements
+
+#### 6.3.1 Dataset Types
+- **Geological Datasets**: Layered patterns with consistent/variable properties
+- **Geometric Shapes**: Simple shapes with subtle variations
+- **Texture Patterns**: Progressive complexity patterns
+- **Domain-Specific**: Medical, astronomical, or other specialized datasets
+- **Synthetic Datasets**: Controllable feature complexity
+
+#### 6.3.2 Dataset Format and Processing
+- Images processed as NumPy arrays
+- Pixel values normalized to [0,1] range
+- Consistent preprocessing across all datasets
+- Support for data augmentation techniques
+- Balanced train/validation/test splits with documented random seeds
+
+### 6.4 Evaluation and Analysis
+
+#### 6.4.1 Evaluation Metrics
+- Reconstruction error (MSE, MAE)
+- Structural similarity metrics
+- Latent space discrimination metrics (silhouette score, classification accuracy)
+- Visual comparison of original vs. reconstructed patterns
+- Feature preservation assessment for different complexity levels
+
+#### 6.4.2 Latent Space Analysis
+- t-SNE and UMAP for high-dimensional visualization
+- PCA for principal component understanding
+- Latent space traversal for feature interpretation
+- Classification methods on latent representations
+- Cluster analysis across different architectures
+
+## 7. Implementation Timeline
+
+### 7.1 Phase 0: Immediate Migration with Git Workflow (Priority)
+**Duration**: 2-3 weeks
+**Deliverables**:
+- Git repository initialized with proper workflow
+- Complete code migration from notebook to Python package
+- Four wrapper functions implemented and tested
+- All visualization consistency issues resolved
+- New notebook interface created and validated
+- All work tracked in version control with proper branching
+
+### 7.2 Phase 1: Enhanced Features
+**Duration**: 2-4 weeks
+**Deliverables**:
+- Advanced configuration management
+- Extended visualization suite
+- Performance optimization
+- Comprehensive documentation
+- Continued Git workflow discipline
+
+### 7.3 Phase 2: Expansion and Research Tools
+**Duration**: 4-6 weeks
+**Deliverables**:
+- Additional dataset creation tools
+- Architecture library expansion
+- Advanced analysis utilities
+- Research publication preparation
+- Version control best practices documentation
+
+## 8. Risk Assessment
+
+### 8.1 Technical Risks
+**Risk**: Loss of functionality during migration
+**Mitigation**: Comprehensive testing and validation against current notebook, tracked in Git
+
+**Risk**: Performance degradation in new package structure
+**Mitigation**: Performance benchmarking and optimization, with changes tracked in version control
+
+**Risk**: Visualization consistency issues persist
+**Mitigation**: Systematic debugging with explicit seed management, using Git branches for each fix
+
+**Risk**: Git workflow complexity slows development
+**Mitigation**: Provide clear Git workflow documentation and training
+
+### 8.2 Project Risks
+**Risk**: Timeline delays due to complexity
+**Mitigation**: Phased approach with clear milestones and success criteria, tracked in Git
+
+**Risk**: User adoption challenges with new interface
+**Mitigation**: Maintain similar interface structure and provide migration guide
+
+**Risk**: Loss of work due to Git mistakes
+**Mitigation**: Comprehensive Git training and emergency recovery procedures
+
+## 9. Success Criteria and Acceptance
+
+### 9.1 Functional Acceptance Criteria
+- [ ] All current notebook functionality preserved in Python package
+- [ ] Four wrapper functions execute correctly with expected outputs
+- [ ] Visualization consistency achieved between run and load operations
+- [ ] Package supports any generic dataset and architecture
+- [ ] New notebook interface provides clean, intuitive workflow
+
+### 9.2 Quality Acceptance Criteria
+- [ ] Code follows Python best practices and is well-documented
+- [ ] All tests pass and provide adequate coverage
+- [ ] Performance meets or exceeds current notebook implementation
+- [ ] Error handling is robust and user-friendly
+- [ ] Package is easily installable and importable
+
+### 9.3 Version Control Acceptance Criteria
+- [ ] Git repository properly initialized with GitHub remote
+- [ ] All development follows feature branch workflow
+- [ ] All code changes tracked with descriptive commits
+- [ ] Pull requests used for all merges to main branch
+- [ ] Emergency recovery procedures documented and tested
+- [ ] Team members trained on Git workflow
+
+### 9.4 Research Acceptance Criteria
+- [ ] Latent space discrimination analysis capabilities preserved
+- [ ] Systematic architecture comparison tools functional
+- [ ] Results are reproducible and scientifically valid
+- [ ] Framework supports progressive complexity dataset analysis
+- [ ] Research workflow is more efficient than current approach
+
+## 10. Future Considerations
+
+### 10.1 Extensibility
+- Plugin architecture for new dataset types
+- Modular architecture system for easy addition of new models
+- Configurable experiment templates for common research patterns
+- Integration with experiment tracking systems (MLflow, Weights & Biases)
+- Git hooks for automated testing and deployment
+
+### 10.2 Collaboration Features
+- Version control integration for experiment tracking
+- Shared configuration and result formats
+- Collaborative analysis tools
+- Publication-ready visualization exports
+- Code review processes for research code quality
+
+### 10.3 Advanced Research Capabilities
+- Automated hyperparameter optimization
+- Multi-objective optimization for architecture design
+- Advanced interpretability tools for latent space analysis
+- Integration with other deep learning frameworks and tools
+- Continuous integration for research reproducibility 

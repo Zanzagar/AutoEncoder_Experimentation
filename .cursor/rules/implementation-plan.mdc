@@ -1,0 +1,218 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Implementation Plan
+
+## Phase 0: Immediate Migration to Python Package Structure
+
+### Priority 0: Git Workflow Setup and Version Control
+
+1. **Initialize Git Repository and Establish Workflow**:
+   - Ensure project is properly initialized with Git version control
+   - Set up GitHub repository for collaboration and backup
+   - Establish branch naming conventions for the migration project:
+     - `feature/migrate-data-module`: Data module migration
+     - `feature/migrate-models-module`: Models module migration  
+     - `feature/migrate-experiment-module`: Experiment module migration
+     - `feature/migrate-visualization-module`: Visualization module migration
+     - `feature/create-wrapper-functions`: Four core wrapper functions
+     - `bugfix/visualization-consistency`: Fix visualization consistency issues
+     - `docs/update-documentation`: Documentation updates
+
+2. **Daily Workflow Protocol for Migration**:
+   - **Start each work session**: `git checkout main && git pull origin main && git checkout -b feature/task-name`
+   - **Commit frequently**: After each module migration, bug fix, or working feature
+   - **Push for backup**: End of each work day and before risky changes
+   - **Never commit to main directly**: All changes via feature branches and pull requests
+   - **Use descriptive commit messages**: "Migrate dataset generation from notebook to data module"
+
+3. **Migration-Specific Git Strategy**:
+   - Create separate feature branches for each module migration
+   - Commit working code only (no broken functionality)
+   - Use git stash for temporary work-in-progress saves
+   - Create pull requests for code review before merging to main
+   - Tag major milestones (e.g., "v1.0-migration-complete")
+
+### Priority 1: Code Migration to autoencoder_lib Package
+
+1. **Extract and Organize Current Notebook Code into Python Package**:
+   - **Git Branch**: `feature/create-package-structure`
+   - Create `autoencoder_lib` package with proper Python package structure
+   - Migrate all functionality from `AutoEncoderJupyterTest.ipynb` into modular components:
+     - `autoencoder_lib/data/`: Dataset generation and loading utilities
+     - `autoencoder_lib/models/`: Autoencoder architecture definitions and model classes
+     - `autoencoder_lib/experiment/`: Training, evaluation, and experiment management
+     - `autoencoder_lib/visualization/`: All visualization functions and utilities
+     - `autoencoder_lib/utils/`: Helper functions and utilities
+   - Ensure ALL current visualization and functionality is preserved
+   - Create clean APIs for each module with consistent parameter handling
+   - **Git Commits**: One commit per module migration when working and tested
+
+2. **Create Four Core Wrapper Functions**:
+   - **Git Branch**: `feature/create-wrapper-functions`
+   - **Dataset Generation Wrapper**: Generate any generic dataset with visualization
+   - **Dataset Visualization Wrapper**: t-SNE projection and dataset analysis
+   - **Experiment Runner Wrapper**: Systematic exploration of autoencoder models
+   - **Results Loader Wrapper**: Load and visualize results from saved experiments
+   - Each wrapper should accept high-level parameters (learning rate, architectures, random seed, latent dimensions, etc.)
+   - **Git Commits**: One commit per wrapper function when complete and tested
+
+3. **Create New Jupyter Notebook Interface**:
+   - **Git Branch**: `feature/create-notebook-interface`
+   - Design new notebook that imports and uses the `autoencoder_lib` package
+   - Implement four main code blocks corresponding to the four wrapper functions
+   - Maintain similar input structure to current notebook for ease of transition
+   - Ensure the new interface is as general as possible for any dataset/architecture
+   - **Git Commit**: When notebook interface is working with all four wrapper functions
+
+### Priority 2: Debug Visualization Consistency Issues
+
+1. **Fix Seed Consistency**:
+   - **Git Branch**: `bugfix/seed-consistency`
+   - Ensure t-SNE projections use the same seed for run and load operations
+   - Implement consistent random state management across all visualization functions
+   - Verify that all stochastic processes (training, visualization) are reproducible
+   - **Git Commit**: When seed consistency is verified and tested
+
+2. **Fix Image Selection Consistency**:
+   - **Git Branch**: `bugfix/image-selection-consistency`
+   - Ensure training and test set reconstruction visualizations show the same images
+   - Implement deterministic selection of 2 images per class for visualization
+   - Make image selection consistent between run and load operations
+   - Document the selection criteria and ensure it's reproducible
+   - **Git Commit**: When image selection is deterministic and documented
+
+3. **Complete Performance Grid Implementation**:
+   - **Git Branch**: `feature/performance-grid-training-data`
+   - Implement performance grid (silhouette score and loss) for both training and test data
+   - Currently only test data is shown - add training data visualization
+   - Ensure grid visualizations are consistent between run and load operations
+   - **Git Commit**: When performance grids show both training and test data consistently
+
+4. **Comprehensive Visualization Validation**:
+   - **Git Branch**: `feature/visualization-validation`
+   - Verify that ALL visualizations generated during model running match those from model loading
+   - Create validation functions to compare run vs load visualization outputs
+   - Document any remaining discrepancies and create fixes
+   - **Git Commit**: When validation functions are implemented and all visualizations match
+
+### Priority 3: Package Structure and API Design
+
+1. **Implement Flexible Parameter System**:
+   - **Git Branch**: `feature/parameter-system`
+   - Create configuration system for experiment parameters
+   - Support any generic dataset input
+   - Support any generic autoencoder architecture
+   - Implement parameter validation and default value handling
+   - **Git Commit**: When parameter system is complete and tested
+
+2. **Create Clean Import Structure**:
+   - **Git Branch**: `feature/clean-imports`
+   - Design intuitive import statements for the new notebook
+   - Ensure package can be easily installed and imported
+   - Create proper `__init__.py` files with appropriate exports
+   - **Git Commit**: When import structure is clean and functional
+
+3. **Documentation and Testing**:
+   - **Git Branch**: `docs/package-documentation`
+   - Document all wrapper functions and their parameters
+   - Create examples for different dataset types and architectures
+   - Implement basic testing to ensure functionality is preserved
+   - **Git Commit**: When documentation is complete and tests pass
+
+### Git Workflow Checkpoints
+
+**Daily Workflow**:
+- Start: `git checkout main && git pull origin main && git checkout -b feature/task`
+- Work: Make changes, test functionality
+- Save: `git add . && git commit -m "Descriptive message"`
+- Backup: `git push origin feature/task`
+- End: Create pull request for code review
+
+**Emergency Recovery**:
+- Uncommitted changes: `git stash` or `git checkout -- filename.py`
+- Committed but not pushed: `git reset HEAD~1`
+- Pushed changes: `git revert HEAD && git push origin main`
+
+**Branch Management**:
+- Feature branches: `feature/descriptive-name`
+- Bug fixes: `bugfix/specific-issue`
+- Documentation: `docs/update-type`
+- Never commit directly to main
+- Delete branches after successful merge
+
+## Phase 1: Enhanced Package Features (After Core Migration)
+
+1. **Advanced Configuration Management**:
+   - **Git Branch**: `feature/advanced-config`
+   - Implement configuration files for experiment settings
+   - Create templates for common experiment types
+   - Add parameter validation and error handling
+
+2. **Extended Visualization Suite**:
+   - **Git Branch**: `feature/extended-visualization`
+   - Add additional visualization options beyond current functionality
+   - Implement comparison tools for multiple experiments
+   - Create summary visualization functions
+
+3. **Performance Optimization**:
+   - **Git Branch**: `feature/performance-optimization`
+   - Optimize training and evaluation loops
+   - Implement efficient data loading and preprocessing
+   - Add progress tracking and logging capabilities
+
+## Phase 2: Dataset and Architecture Expansion (Future)
+
+1. **Dataset Creation Tools**:
+   - **Git Branch**: `feature/dataset-tools`
+   - Create utilities for generating progressively complex datasets
+   - Implement dataset versioning and management
+   - Add tools for dataset analysis and complexity assessment
+
+2. **Architecture Library Expansion**:
+   - **Git Branch**: `feature/architecture-expansion`
+   - Implement additional autoencoder variants
+   - Create architecture comparison tools
+   - Add hyperparameter optimization capabilities
+
+3. **Advanced Analysis Tools**:
+   - **Git Branch**: `feature/advanced-analysis`
+   - Implement latent space analysis utilities
+   - Create discrimination threshold analysis tools
+   - Add feature importance and interpretability tools
+
+## Phase 3: Research and Documentation (Future)
+
+1. **Comprehensive Analysis Framework**:
+   - **Git Branch**: `feature/analysis-framework`
+   - Create tools for systematic architecture comparison
+   - Implement latent space discrimination analysis
+   - Add complexity threshold identification tools
+
+2. **Results Management and Reporting**:
+   - **Git Branch**: `feature/results-management`
+   - Create automated report generation
+   - Implement experiment tracking and comparison
+   - Add visualization export and presentation tools
+
+3. **Documentation and Publication**:
+   - **Git Branch**: `docs/research-publication`
+   - Create comprehensive documentation
+   - Prepare research findings for publication
+   - Archive reproducible experiment configurations
+
+## Success Criteria for Phase 0
+
+- [ ] Git repository properly initialized with GitHub remote
+- [ ] All development follows feature branch workflow
+- [ ] All current notebook functionality migrated to Python package
+- [ ] Four wrapper functions working correctly in new notebook interface
+- [ ] All visualization consistency issues resolved
+- [ ] Run and load operations produce identical visualizations
+- [ ] Package can handle any generic dataset and architecture
+- [ ] New workflow is cleaner and more maintainable than current notebook approach
+- [ ] All code changes tracked in version control with descriptive commits
+- [ ] Pull requests used for all merges to main branch
+

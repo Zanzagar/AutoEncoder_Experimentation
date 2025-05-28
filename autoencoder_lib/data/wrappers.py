@@ -340,8 +340,12 @@ def _analyze_unified_format(
     pca = PCA(n_components=2, random_state=tsne_random_state)
     pca_result = pca.fit_transform(images)
     
-    # Create visualizations
-    visualize_dataset_samples(dataset_info, samples_per_class=5)
+    # Create visualizations - but fix the path issue for visualize_dataset_samples
+    # We need to create a modified dataset_info with absolute paths for visualization
+    viz_dataset_info = dataset_info.copy()
+    viz_dataset_info['filenames'] = [str(base_dir / fname) for fname in dataset_info['filenames']]
+    
+    visualize_dataset_samples(viz_dataset_info, samples_per_class=5)
     
     fig, axes = plt.subplots(2, 2, figsize=figure_size)
     

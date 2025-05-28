@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
+from sklearn.metrics import silhouette_score
 import pandas as pd
 from typing import Dict, Any, Optional, Union, List, Tuple
 from pathlib import Path
@@ -45,6 +46,12 @@ def generate_dataset(
     random_seed: Optional[int] = None,
     visualize: bool = True,
     force_regenerate: bool = False,
+    # New parameters for train-test split
+    create_train_test_split: bool = True,
+    train_ratio: float = 0.7,
+    test_ratio: float = 0.2,
+    validation_ratio: float = 0.1,
+    split_seed: Optional[int] = None,
     **kwargs
 ) -> Dict[str, Any]:
     """
@@ -56,6 +63,7 @@ def generate_dataset(
     Both dataset types now use the same file structure:
     - Individual PNG files for each sample
     - .npy metadata file with filenames, labels, and parameters
+    - Optional train/test/validation split indices for reproducible experiments
     
     Parameters:
     -----------
@@ -75,6 +83,16 @@ def generate_dataset(
         Whether to automatically display sample visualizations
     force_regenerate : bool
         If True, regenerate even if dataset already exists
+    create_train_test_split : bool
+        Whether to create and save train/test/validation split indices
+    train_ratio : float
+        Proportion of data for training (default: 0.7)
+    test_ratio : float
+        Proportion of data for testing (default: 0.2)
+    validation_ratio : float
+        Proportion of data for validation (default: 0.1)
+    split_seed : int, optional
+        Random seed for reproducible splits (uses random_seed if not specified)
     **kwargs
         Additional parameters specific to the dataset type
         
@@ -86,6 +104,7 @@ def generate_dataset(
         - 'labels': List of corresponding class labels
         - 'label_names': List of class names
         - 'params': Dictionary of generation parameters
+        - 'split_info': Dictionary with train/test/validation indices (if create_train_test_split=True)
     """
     if random_seed is not None:
         np.random.seed(random_seed)
@@ -118,8 +137,6 @@ def generate_dataset(
             print(f"Number of classes: {stats['num_classes']}")
             print(f"Class distribution: {stats['class_distribution']}")
             print(f"Image size: {stats['image_size']}x{stats['image_size']}")
-        
-        return dataset_info
         
     elif dataset_type == "geological":
         # Use the new framework format (5 classes) - now uses same file structure
@@ -154,11 +171,96 @@ def generate_dataset(
             print(f"Class distribution: {stats['class_distribution']}")
             print(f"Image size: {stats['image_size']}x{stats['image_size']}")
         
-        return dataset_info
-    
     else:
         raise ValueError(f"Unsupported dataset type: {dataset_type}. "
                         f"Supported types: 'layered_geological', 'geological'")
+    
+    # Create train/test/validation split if requested
+    if create_train_test_split:
+        logger.info("Creating train/test/validation split...")
+        
+        # Use split_seed if provided, otherwise use random_seed
+        actual_split_seed = split_seed if split_seed is not None else random_seed
+        
+        if actual_split_seed is not None:
+            np.random.seed(actual_split_seed)
+        
+        total_samples = len(dataset_info['filenames'])
+        
+        # Validate ratios
+        if abs(train_ratio + test_ratio + validation_ratio - 1.0) > 1e-6:
+            raise ValueError(f"Split ratios must sum to 1.0, got {train_ratio + test_ratio + validation_ratio}")
+        
+        # Create stratified split to maintain class balance
+        indices_by_class = {}
+        for idx, label in enumerate(dataset_info['labels']):
+            if label not in indices_by_class:
+                indices_by_class[label] = []
+            indices_by_class[label].append(idx)
+        
+        train_indices = []
+        test_indices = []
+        val_indices = []
+        
+        for label, class_indices in indices_by_class.items():
+            np.random.shuffle(class_indices)
+            n_samples = len(class_indices)
+            
+            n_train = int(n_samples * train_ratio)
+            n_test = int(n_samples * test_ratio)
+            n_val = n_samples - n_train - n_test  # Remaining goes to validation
+            
+            train_indices.extend(class_indices[:n_train])
+            test_indices.extend(class_indices[n_train:n_train + n_test])
+            if validation_ratio > 0:
+                val_indices.extend(class_indices[n_train + n_test:])
+        
+        # Shuffle the combined indices
+        np.random.shuffle(train_indices)
+        np.random.shuffle(test_indices)
+        if validation_ratio > 0:
+            np.random.shuffle(val_indices)
+        
+        # Create split info
+        split_info = {
+            'train_indices': sorted(train_indices),
+            'test_indices': sorted(test_indices),
+            'metadata': {
+                'split_seed': actual_split_seed,
+                'train_ratio': train_ratio,
+                'test_ratio': test_ratio,
+                'validation_ratio': validation_ratio,
+                'total_samples': total_samples,
+                'train_samples': len(train_indices),
+                'test_samples': len(test_indices),
+                'stratified': True  # We use stratified splitting
+            }
+        }
+        
+        if validation_ratio > 0:
+            split_info['validation_indices'] = sorted(val_indices)
+            split_info['metadata']['validation_samples'] = len(val_indices)
+        
+        # Add split info to dataset
+        dataset_info['split_info'] = split_info
+        
+        # Save updated dataset info with split
+        output_path = Path(output_dir)
+        np.save(output_path / 'dataset_info.npy', dataset_info)
+        
+        logger.info(f"Split created: {len(train_indices)} train, {len(test_indices)} test" +
+                   (f", {len(val_indices)} validation" if validation_ratio > 0 else ""))
+        
+        # Print split statistics
+        if visualize:
+            print(f"\nTrain/Test Split Created:")
+            print(f"Split seed: {actual_split_seed}")
+            print(f"Train samples: {len(train_indices)} ({train_ratio:.1%})")
+            print(f"Test samples: {len(test_indices)} ({test_ratio:.1%})")
+            if validation_ratio > 0:
+                print(f"Validation samples: {len(val_indices)} ({validation_ratio:.1%})")
+    
+    return dataset_info
 
 
 def visualize_dataset(
@@ -340,6 +442,11 @@ def _analyze_unified_format(
     pca = PCA(n_components=2, random_state=tsne_random_state)
     pca_result = pca.fit_transform(images)
     
+    # Calculate silhouette scores
+    logger.info("Computing Silhouette Scores...")
+    tsne_silhouette = silhouette_score(tsne_result, labels) if len(np.unique(labels)) > 1 else 0
+    pca_silhouette = silhouette_score(pca_result, labels) if len(np.unique(labels)) > 1 else 0
+    
     # Create visualizations - but fix the path issue for visualize_dataset_samples
     # We need to create a modified dataset_info with absolute paths for visualization
     viz_dataset_info = dataset_info.copy()
@@ -349,19 +456,32 @@ def _analyze_unified_format(
     
     fig, axes = plt.subplots(2, 2, figsize=figure_size)
     
-    # t-SNE plot
-    scatter = axes[0, 0].scatter(tsne_result[:, 0], tsne_result[:, 1], c=labels, cmap='viridis', alpha=0.7)
-    axes[0, 0].set_title('t-SNE Projection')
+    # Define colors for each class
+    colors = plt.cm.Set1(np.linspace(0, 1, len(class_names)))
+    
+    # t-SNE plot with class labels
+    for i, class_name in enumerate(class_names):
+        mask = labels == i
+        if np.any(mask):
+            axes[0, 0].scatter(tsne_result[mask, 0], tsne_result[mask, 1], 
+                             c=[colors[i]], label=class_name, alpha=0.7, s=20)
+    
+    axes[0, 0].set_title(f't-SNE Projection (n={len(images)}, Silhouette={tsne_silhouette:.3f})')
     axes[0, 0].set_xlabel('t-SNE 1')
     axes[0, 0].set_ylabel('t-SNE 2')
-    plt.colorbar(scatter, ax=axes[0, 0])
+    axes[0, 0].legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     
-    # PCA plot
-    scatter = axes[0, 1].scatter(pca_result[:, 0], pca_result[:, 1], c=labels, cmap='viridis', alpha=0.7)
-    axes[0, 1].set_title('PCA Projection')
+    # PCA plot with class labels
+    for i, class_name in enumerate(class_names):
+        mask = labels == i
+        if np.any(mask):
+            axes[0, 1].scatter(pca_result[mask, 0], pca_result[mask, 1], 
+                             c=[colors[i]], label=class_name, alpha=0.7, s=20)
+    
+    axes[0, 1].set_title(f'PCA Projection (n={len(images)}, Silhouette={pca_silhouette:.3f})')
     axes[0, 1].set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)')
     axes[0, 1].set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)')
-    plt.colorbar(scatter, ax=axes[0, 1])
+    axes[0, 1].legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     
     # Class distribution
     class_counts = {}
@@ -369,17 +489,24 @@ def _analyze_unified_format(
         class_name = dataset_info['label_names'][label]
         class_counts[class_name] = class_counts.get(class_name, 0) + 1
     
-    axes[1, 0].bar(class_counts.keys(), class_counts.values())
+    axes[1, 0].bar(class_counts.keys(), class_counts.values(), color=colors[:len(class_counts)])
     axes[1, 0].set_title('Class Distribution')
     axes[1, 0].set_ylabel('Number of Samples')
     axes[1, 0].tick_params(axis='x', rotation=45)
     
-    # Pixel intensity distribution
-    pixel_values = images.flatten()
-    axes[1, 1].hist(pixel_values, bins=50, alpha=0.7, edgecolor='black')
-    axes[1, 1].set_title('Pixel Intensity Distribution')
+    # Per-class pixel intensity distribution
+    axes[1, 1].set_title('Pixel Intensity Distribution by Class')
     axes[1, 1].set_xlabel('Pixel Value')
-    axes[1, 1].set_ylabel('Frequency')
+    axes[1, 1].set_ylabel('Density')
+    
+    for i, class_name in enumerate(class_names):
+        mask = labels == i
+        if np.any(mask):
+            class_pixels = images[mask].flatten()
+            axes[1, 1].hist(class_pixels, bins=30, alpha=0.6, 
+                          label=class_name, color=colors[i], density=True)
+    
+    axes[1, 1].legend()
     
     plt.tight_layout()
     plt.show()
@@ -388,6 +515,7 @@ def _analyze_unified_format(
     stats = get_layered_stats(dataset_info)
     
     if show_statistics:
+        pixel_values = images.flatten()
         print("\n" + "="*50)
         print("DATASET ANALYSIS SUMMARY")
         print("="*50)
@@ -400,6 +528,8 @@ def _analyze_unified_format(
         print(f"Mean Pixel Value: {np.mean(pixel_values):.3f}")
         print(f"Std Pixel Value: {np.std(pixel_values):.3f}")
         print(f"PCA Explained Variance: {pca.explained_variance_ratio_[:2]}")
+        print(f"t-SNE Silhouette Score: {tsne_silhouette:.3f}")
+        print(f"PCA Silhouette Score: {pca_silhouette:.3f}")
     
     return {
         'tsne_projection': tsne_result,
@@ -407,10 +537,150 @@ def _analyze_unified_format(
         'class_distribution': class_counts,
         'statistics': stats,
         'pca_explained_variance': pca.explained_variance_ratio_[:2],
+        'silhouette_scores': {
+            'tsne': tsne_silhouette,
+            'pca': pca_silhouette
+        },
         'pixel_statistics': {
-            'min': np.min(pixel_values),
-            'max': np.max(pixel_values),
-            'mean': np.mean(pixel_values),
-            'std': np.std(pixel_values)
+            'min': np.min(images.flatten()),
+            'max': np.max(images.flatten()),
+            'mean': np.mean(images.flatten()),
+            'std': np.std(images.flatten())
         }
-    } 
+    }
+
+
+def get_split_data(dataset_info: Dict[str, Any], split_type: str = "train") -> Dict[str, Any]:
+    """
+    Extract train, test, or validation data using the saved split indices.
+    
+    Parameters:
+    -----------
+    dataset_info : dict
+        Dataset information dictionary containing split_info
+    split_type : str
+        Type of split to extract: "train", "test", or "validation"
+        
+    Returns:
+    --------
+    dict
+        Dictionary containing the split data:
+        - 'filenames': List of image file paths for this split
+        - 'labels': List of corresponding class labels for this split
+        - 'indices': List of original dataset indices for this split
+        - 'label_names': List of class names (same for all splits)
+        - 'metadata': Split metadata information
+    """
+    if 'split_info' not in dataset_info:
+        raise ValueError("Dataset does not contain split information. "
+                        "Generate dataset with create_train_test_split=True")
+    
+    split_info = dataset_info['split_info']
+    valid_types = ['train', 'test', 'validation']
+    
+    if split_type not in valid_types:
+        raise ValueError(f"split_type must be one of {valid_types}, got '{split_type}'")
+    
+    # Get indices for the requested split
+    indices_key = f"{split_type}_indices"
+    if indices_key not in split_info:
+        if split_type == "validation" and split_info['metadata'].get('validation_ratio', 0) == 0:
+            raise ValueError("No validation split available. Dataset was created with validation_ratio=0")
+        else:
+            raise ValueError(f"Split type '{split_type}' not found in dataset")
+    
+    indices = split_info[indices_key]
+    
+    # Extract data for this split
+    split_filenames = [dataset_info['filenames'][i] for i in indices]
+    split_labels = [dataset_info['labels'][i] for i in indices]
+    
+    split_data = {
+        'filenames': split_filenames,
+        'labels': split_labels,
+        'indices': indices,
+        'label_names': dataset_info['label_names'],
+        'metadata': split_info['metadata']
+    }
+    
+    return split_data
+
+
+def get_all_splits(dataset_info: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any], Optional[Dict[str, Any]]]:
+    """
+    Get all available splits (train, test, validation) from the dataset.
+    
+    Parameters:
+    -----------
+    dataset_info : dict
+        Dataset information dictionary containing split_info
+        
+    Returns:
+    --------
+    tuple
+        (train_data, test_data, validation_data)
+        validation_data is None if no validation split was created
+    """
+    train_data = get_split_data(dataset_info, "train")
+    test_data = get_split_data(dataset_info, "test")
+    
+    # Check if validation split exists
+    validation_data = None
+    if 'validation_indices' in dataset_info.get('split_info', {}):
+        validation_data = get_split_data(dataset_info, "validation")
+    
+    return train_data, test_data, validation_data
+
+
+def print_split_summary(dataset_info: Dict[str, Any]) -> None:
+    """
+    Print a summary of the dataset splits.
+    
+    Parameters:
+    -----------
+    dataset_info : dict
+        Dataset information dictionary containing split_info
+    """
+    if 'split_info' not in dataset_info:
+        print("❌ No split information available in dataset")
+        return
+    
+    split_info = dataset_info['split_info']
+    metadata = split_info['metadata']
+    
+    print("\n" + "="*50)
+    print("DATASET SPLIT SUMMARY")
+    print("="*50)
+    print(f"Total samples: {metadata['total_samples']}")
+    print(f"Split seed: {metadata['split_seed']}")
+    print(f"Stratified: {metadata['stratified']}")
+    print()
+    
+    # Training split
+    print(f"🏋️  Training:   {metadata['train_samples']:4d} samples ({metadata['train_ratio']:.1%})")
+    
+    # Test split  
+    print(f"🧪 Testing:    {metadata['test_samples']:4d} samples ({metadata['test_ratio']:.1%})")
+    
+    # Validation split (if exists)
+    if 'validation_samples' in metadata:
+        print(f"✅ Validation: {metadata['validation_samples']:4d} samples ({metadata['validation_ratio']:.1%})")
+    
+    # Class distribution per split
+    print("\nClass distribution per split:")
+    train_data = get_split_data(dataset_info, "train")
+    test_data = get_split_data(dataset_info, "test")
+    
+    for i, class_name in enumerate(dataset_info['label_names']):
+        train_count = sum(1 for label in train_data['labels'] if label == i)
+        test_count = sum(1 for label in test_data['labels'] if label == i)
+        
+        print(f"  {class_name}:")
+        print(f"    Train: {train_count:3d}, Test: {test_count:3d}", end="")
+        
+        if 'validation_indices' in dataset_info.get('split_info', {}):
+            val_data = get_split_data(dataset_info, "validation")
+            val_count = sum(1 for label in val_data['labels'] if label == i)
+            print(f", Val: {val_count:3d}")
+        else:
+            print() 

@@ -188,4 +188,8 @@ Thumbs.db
 # Task Master files (keep configuration but ignore generated files)
 tasks.json
 tasks/
-!.taskmasterconfig 
+!.taskmasterconfig demo_original_dataset/ 
+demo_enhanced_dataset/ 
+comparison_original_dataset/ 
+original_layered_dataset/ 
+simple_test/ 

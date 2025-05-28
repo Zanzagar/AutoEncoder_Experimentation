@@ -52,11 +52,15 @@ def generate_dataset(
     This wrapper supports multiple dataset types and provides a unified interface
     for dataset generation across the autoencoder experimentation framework.
     
+    Both dataset types now use the same file structure:
+    - Individual PNG files for each sample
+    - .npy metadata file with filenames, labels, and parameters
+    
     Parameters:
     -----------
     dataset_type : str
         Type of dataset to generate. Options:
-        - "layered_geological": Original format from AutoEncoderJupyterTest.ipynb
+        - "layered_geological": Original format from AutoEncoderJupyterTest.ipynb (2 classes)
         - "geological": New framework format with 5 geological pattern types
     output_dir : str
         Directory to save the generated dataset
@@ -76,19 +80,11 @@ def generate_dataset(
     Returns:
     --------
     dict
-        Dictionary containing dataset information, format depends on dataset_type:
-        
-        For "layered_geological":
+        Dictionary containing dataset information (unified format):
         - 'filenames': List of image file paths
-        - 'labels': List of corresponding class labels (0 or 1)
-        - 'label_names': List of class names ['consistent_layers', 'variable_layers']
+        - 'labels': List of corresponding class labels
+        - 'label_names': List of class names
         - 'params': Dictionary of generation parameters
-        
-        For "geological":
-        - 'images': NumPy array of images
-        - 'labels': NumPy array of labels
-        - 'class_names': List of class names
-        - 'metadata': Dictionary with generation parameters and statistics
     """
     if random_seed is not None:
         np.random.seed(random_seed)
@@ -99,7 +95,7 @@ def generate_dataset(
     logger.info(f"Parameters: {num_samples_per_class} samples per class, {image_size}x{image_size} images")
     
     if dataset_type == "layered_geological":
-        # Use the original format from AutoEncoderJupyterTest.ipynb
+        # Use the original format from AutoEncoderJupyterTest.ipynb (2 classes)
         dataset_info = generate_layered_dataset(
             output_dir=output_dir,
             num_samples_per_class=num_samples_per_class,
@@ -125,37 +121,37 @@ def generate_dataset(
         return dataset_info
         
     elif dataset_type == "geological":
-        # Use the new framework format
+        # Use the new framework format (5 classes) - now uses same file structure
         # Extract geological-specific parameters
         num_layers_range = kwargs.get('num_layers_range', (3, 7))
         noise_level = kwargs.get('noise_level', 0.1)
         
-        # Create the dataset
-        dataset = LayeredGeologicalDataset(
+        # Create the dataset using the updated LayeredGeologicalDataset
+        dataset = LayeredGeologicalDataset()
+        
+        # Generate the dataset
+        dataset_info = dataset.generate(
             output_dir=output_dir,
             num_samples_per_class=num_samples_per_class,
             image_size=image_size,
             num_layers_range=num_layers_range,
             noise_level=noise_level,
-            random_seed=random_seed
+            random_seed=random_seed,
+            force_regenerate=force_regenerate
         )
-        
-        # Generate the dataset
-        dataset_info = dataset.generate()
         
         if visualize:
             logger.info("Displaying sample visualizations...")
-            _visualize_geological_samples(dataset_info)
+            # Use the same visualization function since format is now unified
+            visualize_dataset_samples(dataset_info, samples_per_class=5)
             
-            # Show statistics
-            stats = calculate_data_statistics(dataset_info['images'])
+            # Show statistics using the unified format
+            stats = get_layered_stats(dataset_info)
             print("\nDataset Statistics:")
-            print(f"Total samples: {len(dataset_info['images'])}")
-            print(f"Number of classes: {len(dataset_info['class_names'])}")
-            print(f"Image shape: {dataset_info['images'].shape}")
-            print(f"Pixel value range: [{stats['min']:.3f}, {stats['max']:.3f}]")
-            print(f"Mean pixel value: {stats['mean']:.3f}")
-            print(f"Std pixel value: {stats['std']:.3f}")
+            print(f"Total samples: {stats['total_samples']}")
+            print(f"Number of classes: {stats['num_classes']}")
+            print(f"Class distribution: {stats['class_distribution']}")
+            print(f"Image size: {stats['image_size']}x{stats['image_size']}")
         
         return dataset_info
     
@@ -177,8 +173,8 @@ def visualize_dataset(
     """
     Visualize and analyze a dataset with comprehensive plots and statistics.
     
-    This wrapper provides unified visualization for different dataset formats
-    and automatically detects the format when possible.
+    This wrapper provides unified visualization for different dataset formats.
+    Both dataset types now use the same file structure (PNG files + .npy metadata).
     
     Parameters:
     -----------
@@ -188,9 +184,9 @@ def visualize_dataset(
         Path to dataset file or directory (if loading from disk)
     dataset_type : str
         Type of dataset format. Options:
-        - "auto": Automatically detect format
-        - "layered_geological": Original format from AutoEncoderJupyterTest.ipynb
-        - "geological": New framework format
+        - "auto": Automatically detect format (based on number of classes)
+        - "layered_geological": Original format (2 classes)
+        - "geological": New framework format (5 classes)
     tsne_perplexity : int
         Perplexity parameter for t-SNE
     tsne_random_state : int
@@ -214,63 +210,60 @@ def visualize_dataset(
     # Load dataset if path provided
     if dataset_path is not None and dataset_info is None:
         if dataset_type == "auto":
-            # Try to detect format
+            # Try to detect format - both use .npy files now
             if dataset_path.endswith('.npy') or Path(dataset_path).is_dir():
-                dataset_type = "layered_geological"
-            elif dataset_path.endswith('.json'):
-                dataset_type = "geological"
+                # Load to check number of classes for auto-detection
+                temp_info = load_layered_dataset(dataset_path)
+                if len(temp_info['label_names']) == 2:
+                    dataset_type = "layered_geological"
+                elif len(temp_info['label_names']) == 5:
+                    dataset_type = "geological"
+                else:
+                    logger.warning("Could not auto-detect dataset type, assuming layered_geological")
+                    dataset_type = "layered_geological"
+                dataset_info = temp_info
             else:
                 logger.warning("Could not auto-detect dataset type, assuming layered_geological")
                 dataset_type = "layered_geological"
         
-        if dataset_type == "layered_geological":
+        if dataset_info is None:
+            # Load using the unified loader
             dataset_info = load_layered_dataset(dataset_path)
-        elif dataset_type == "geological":
-            with open(dataset_path, 'r') as f:
-                dataset_info = json.load(f)
-                # Convert lists back to numpy arrays
-                dataset_info['images'] = np.array(dataset_info['images'])
-                dataset_info['labels'] = np.array(dataset_info['labels'])
-        else:
-            raise ValueError(f"Unsupported dataset type: {dataset_type}")
     
     if dataset_info is None:
         raise ValueError("Must provide either dataset_info or dataset_path")
     
-    # Detect format if auto
+    # Detect format if auto (based on loaded data)
     if dataset_type == "auto":
-        if 'filenames' in dataset_info and 'label_names' in dataset_info:
-            dataset_type = "layered_geological"
-        elif 'images' in dataset_info and 'class_names' in dataset_info:
-            dataset_type = "geological"
+        if 'label_names' in dataset_info:
+            if len(dataset_info['label_names']) == 2:
+                dataset_type = "layered_geological"
+            elif len(dataset_info['label_names']) == 5:
+                dataset_type = "geological"
+            else:
+                dataset_type = "layered_geological"  # Default fallback
         else:
             raise ValueError("Could not auto-detect dataset format")
     
     logger.info(f"Analyzing {dataset_type} dataset...")
     
-    if dataset_type == "layered_geological":
-        return _analyze_layered_geological(
-            dataset_info, tsne_perplexity, tsne_random_state, 
-            max_samples_for_tsne, show_statistics, figure_size
-        )
-    elif dataset_type == "geological":
-        return _analyze_geological(
-            dataset_info, tsne_perplexity, tsne_random_state,
-            max_samples_for_tsne, show_statistics, figure_size
-        )
-    else:
-        raise ValueError(f"Unsupported dataset type: {dataset_type}")
+    # Both dataset types now use the same format, so use unified analysis
+    return _analyze_unified_format(
+        dataset_info, dataset_type, tsne_perplexity, tsne_random_state, 
+        max_samples_for_tsne, show_statistics, figure_size
+    )
 
 
-def _analyze_layered_geological(
+def _analyze_unified_format(
     dataset_info: Dict[str, Any],
+    dataset_type: str,
     tsne_perplexity: int,
     tsne_random_state: int,
     max_samples_for_tsne: int,
     show_statistics: bool,
     figure_size: Tuple[int, int]
 ) -> Dict[str, Any]:
-    """Analyze layered geological dataset (original format)"""
+    """Analyze dataset in unified format (PNG files + .npy metadata)"""
     
     # Load images into memory for analysis
     images = []
@@ -281,16 +274,37 @@ def _analyze_layered_geological(
     if len(sample_indices) > max_samples_for_tsne:
         sample_indices = np.random.choice(sample_indices, max_samples_for_tsne, replace=False)
     
+    # Get the base directory from the first filename
+    first_filename = dataset_info['filenames'][0]
+    if '/' in first_filename or '\\' in first_filename:
+        # Relative path - need to find the base directory
+        # This is a bit tricky, but we can try to infer it
+        base_dir = Path(first_filename).parent.parent
+    else:
+        # Assume current directory
+        base_dir = Path('.')
+    
     for idx in sample_indices:
-        img_path = dataset_info['filenames'][idx]
-        img = plt.imread(img_path)
-        if len(img.shape) == 3:
-            img = np.mean(img, axis=2)  # Convert to grayscale if needed
-        images.append(img.flatten())
-        labels.append(dataset_info['labels'][idx])
+        img_path = base_dir / dataset_info['filenames'][idx]
+        if not img_path.exists():
+            # Try without base_dir (absolute path)
+            img_path = Path(dataset_info['filenames'][idx])
+        
+        if img_path.exists():
+            img = plt.imread(str(img_path))
+            if len(img.shape) == 3:
+                img = np.mean(img, axis=2)  # Convert to grayscale if needed
+            images.append(img.flatten())
+            labels.append(dataset_info['labels'][idx])
+        else:
+            logger.warning(f"Could not find image file: {img_path}")
+    
+    if not images:
+        raise FileNotFoundError("Could not load any images from the dataset")
     
     images = np.array(images)
     labels = np.array(labels)
+    class_names = dataset_info['label_names']
     
     # Perform dimensionality reduction
     logger.info("Computing t-SNE projection...")
@@ -302,10 +316,9 @@ def _analyze_layered_geological(
     pca_result = pca.fit_transform(images)
     
     # Create visualizations
-    fig, axes = plt.subplots(2, 2, figsize=figure_size)
+    visualize_dataset_samples(dataset_info, samples_per_class=5)
     
-    # Sample visualization
-    visualize_dataset_samples(dataset_info, samples_per_class=5, figure_size=(8, 4))
+    fig, axes = plt.subplots(2, 2, figsize=figure_size)
     
     # t-SNE plot
     scatter = axes[0, 0].scatter(tsne_result[:, 0], tsne_result[:, 1], c=labels, cmap='viridis', alpha=0.7)
@@ -349,7 +362,7 @@ def _analyze_layered_geological(
         print("\n" + "="*50)
         print("DATASET ANALYSIS SUMMARY")
         print("="*50)
-        print(f"Dataset Type: Layered Geological (Original Format)")
+        print(f"Dataset Type: {dataset_type}")
         print(f"Total Samples: {stats['total_samples']}")
         print(f"Number of Classes: {stats['num_classes']}")
         print(f"Image Size: {stats['image_size']}x{stats['image_size']}")
@@ -371,140 +384,4 @@ def _analyze_layered_geological(
             'mean': np.mean(pixel_values),
             'std': np.std(pixel_values)
         }
-    }
-
-
-def _analyze_geological(
-    dataset_info: Dict[str, Any],
-    tsne_perplexity: int,
-    tsne_random_state: int,
-    max_samples_for_tsne: int,
-    show_statistics: bool,
-    figure_size: Tuple[int, int]
-) -> Dict[str, Any]:
-    """Analyze geological dataset (new framework format)"""
-    
-    images = dataset_info['images']
-    labels = dataset_info['labels']
-    class_names = dataset_info['class_names']
-    
-    # Sample data if too large
-    if len(images) > max_samples_for_tsne:
-        indices = np.random.choice(len(images), max_samples_for_tsne, replace=False)
-        images_sample = images[indices]
-        labels_sample = labels[indices]
-    else:
-        images_sample = images
-        labels_sample = labels
-    
-    # Flatten images for dimensionality reduction
-    images_flat = images_sample.reshape(len(images_sample), -1)
-    
-    # Perform dimensionality reduction
-    logger.info("Computing t-SNE projection...")
-    tsne = TSNE(n_components=2, perplexity=tsne_perplexity, random_state=tsne_random_state)
-    tsne_result = tsne.fit_transform(images_flat)
-    
-    logger.info("Computing PCA projection...")
-    pca = PCA(n_components=2, random_state=tsne_random_state)
-    pca_result = pca.fit_transform(images_flat)
-    
-    # Create visualizations
-    _visualize_geological_samples(dataset_info)
-    
-    fig, axes = plt.subplots(2, 2, figsize=figure_size)
-    
-    # t-SNE plot
-    scatter = axes[0, 0].scatter(tsne_result[:, 0], tsne_result[:, 1], c=labels_sample, cmap='viridis', alpha=0.7)
-    axes[0, 0].set_title('t-SNE Projection')
-    axes[0, 0].set_xlabel('t-SNE 1')
-    axes[0, 0].set_ylabel('t-SNE 2')
-    plt.colorbar(scatter, ax=axes[0, 0])
-    
-    # PCA plot
-    scatter = axes[0, 1].scatter(pca_result[:, 0], pca_result[:, 1], c=labels_sample, cmap='viridis', alpha=0.7)
-    axes[0, 1].set_title('PCA Projection')
-    axes[0, 1].set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)')
-    axes[0, 1].set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)')
-    plt.colorbar(scatter, ax=axes[0, 1])
-    
-    # Class distribution
-    unique_labels, counts = np.unique(labels, return_counts=True)
-    class_counts = {class_names[i]: counts[i] for i in unique_labels}
-    
-    axes[1, 0].bar(class_counts.keys(), class_counts.values())
-    axes[1, 0].set_title('Class Distribution')
-    axes[1, 0].set_ylabel('Number of Samples')
-    axes[1, 0].tick_params(axis='x', rotation=45)
-    
-    # Pixel intensity distribution
-    pixel_values = images.flatten()
-    axes[1, 1].hist(pixel_values, bins=50, alpha=0.7, edgecolor='black')
-    axes[1, 1].set_title('Pixel Intensity Distribution')
-    axes[1, 1].set_xlabel('Pixel Value')
-    axes[1, 1].set_ylabel('Frequency')
-    
-    plt.tight_layout()
-    plt.show()
-    
-    # Calculate statistics
-    stats = calculate_data_statistics(images)
-    
-    if show_statistics:
-        print("\n" + "="*50)
-        print("DATASET ANALYSIS SUMMARY")
-        print("="*50)
-        print(f"Dataset Type: Geological (New Framework Format)")
-        print(f"Total Samples: {len(images)}")
-        print(f"Number of Classes: {len(class_names)}")
-        print(f"Image Shape: {images.shape}")
-        print(f"Class Distribution: {class_counts}")
-        print(f"Pixel Value Range: [{stats['min']:.3f}, {stats['max']:.3f}]")
-        print(f"Mean Pixel Value: {stats['mean']:.3f}")
-        print(f"Std Pixel Value: {stats['std']:.3f}")
-        print(f"PCA Explained Variance: {pca.explained_variance_ratio_[:2]}")
-    
-    return {
-        'tsne_projection': tsne_result,
-        'pca_projection': pca_result,
-        'class_distribution': class_counts,
-        'statistics': stats,
-        'pca_explained_variance': pca.explained_variance_ratio_[:2]
-    }
-
-
-def _visualize_geological_samples(dataset_info: Dict[str, Any], samples_per_class: int = 5):
-    """Visualize samples from geological dataset (new format)"""
-    images = dataset_info['images']
-    labels = dataset_info['labels']
-    class_names = dataset_info['class_names']
-    
-    unique_labels = np.unique(labels)
-    num_classes = len(unique_labels)
-    
-    fig, axes = plt.subplots(num_classes, samples_per_class, figsize=(15, 3*num_classes))
-    if num_classes == 1:
-        axes = axes.reshape(1, -1)
-    
-    for i, label in enumerate(unique_labels):
-        # Get indices for this class
-        class_indices = np.where(labels == label)[0]
-        
-        # Sample random images
-        sample_indices = np.random.choice(class_indices, min(samples_per_class, len(class_indices)), replace=False)
-        
-        for j, idx in enumerate(sample_indices):
-            ax = axes[i, j] if num_classes > 1 else axes[j]
-            ax.imshow(images[idx], cmap='gray')
-            
-            # Add class label only to the first image of each row
-            if j == 0:
-                ax.set_ylabel(class_names[label], fontsize=12, rotation=0, labelpad=40, ha='right', va='center')
-            
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.axis('off')
-    
-    plt.suptitle("Geological Pattern Samples", fontsize=16)
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plt.show() 
+    } 

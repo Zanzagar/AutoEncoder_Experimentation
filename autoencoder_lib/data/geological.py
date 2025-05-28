@@ -3,6 +3,7 @@ Geological dataset generation for autoencoder experiments.
 
 This module provides functionality to generate synthetic geological patterns
 including layered structures, fault systems, and other geological features.
+Uses the same file structure as the original AutoEncoderJupyterTest.ipynb format.
 """
 
 import numpy as np
@@ -10,6 +11,8 @@ import matplotlib.pyplot as plt
 from typing import Dict, Any, Tuple, Optional, Union, List
 from pathlib import Path
 import json
+from PIL import Image
+import os
 from .base import BaseDataset
 import logging
 
@@ -26,6 +29,10 @@ class LayeredGeologicalDataset(BaseDataset):
     - Fault systems
     - Intrusions
     - Unconformities
+    
+    Uses the same file structure as the original AutoEncoderJupyterTest.ipynb format:
+    - Individual PNG files for each sample
+    - .npy metadata file with filenames, labels, and parameters
     """
     
     def __init__(self, name: str = "layered_geological", output_dir: Optional[Union[str, Path]] = None):
@@ -53,7 +60,8 @@ class LayeredGeologicalDataset(BaseDataset):
                  image_size: int = 64,
                  num_layers_range: Tuple[int, int] = (3, 8),
                  noise_level: float = 0.1,
-                 random_seed: Optional[int] = None) -> Dict[str, Any]:
+                 random_seed: Optional[int] = None,
+                 force_regenerate: bool = False) -> Dict[str, Any]:
         """
         Generate layered geological patterns dataset.
         
@@ -64,94 +72,88 @@ class LayeredGeologicalDataset(BaseDataset):
             num_layers_range: Range for number of layers in each pattern
             noise_level: Amount of noise to add (0.0 to 1.0)
             random_seed: Random seed for reproducibility
+            force_regenerate: Force regeneration even if dataset exists
             
         Returns:
-            Dictionary containing generated dataset information
+            Dictionary containing generated dataset information (same format as original)
         """
         if random_seed is not None:
             np.random.seed(random_seed)
         
+        output_path = Path(output_dir)
+        
+        # Check if dataset already exists
+        if not force_regenerate and (output_path / 'dataset_info.npy').exists():
+            logger.info(f"Dataset already exists at {output_path}, loading existing dataset")
+            return self.load(output_path)
+        
+        # Create output directory
+        output_path.mkdir(exist_ok=True)
+        
         logger.info(f"Generating {len(self.pattern_classes)} classes of geological patterns...")
         
-        all_images = []
+        all_filenames = []
         all_labels = []
         
         for class_idx, pattern_class in enumerate(self.pattern_classes):
             logger.info(f"  Generating {pattern_class}...")
             
-            class_images = []
+            # Create class subdirectory
+            class_dir = output_path / pattern_class
+            class_dir.mkdir(exist_ok=True)
+            
             for sample_idx in range(num_samples_per_class):
                 try:
                     if pattern_class == 'horizontal_layers':
-                        print(f"    Generating horizontal layers sample {sample_idx + 1}")
                         image = self._generate_horizontal_layers(image_size, num_layers_range, noise_level)
-                        print(f"    Successfully generated horizontal layers sample {sample_idx + 1}")
                     elif pattern_class == 'folded_layers':
-                        print(f"    Generating folded layer sample {sample_idx + 1}/{num_samples_per_class}")
                         image = self._generate_folded_layers(image_size, num_layers_range, noise_level)
-                        print(f"    Successfully generated folded layer sample {sample_idx + 1}")
                     elif pattern_class == 'faulted_layers':
-                        print(f"    Generating faulted layers sample {sample_idx + 1}")
                         image = self._generate_faulted_layers(image_size, num_layers_range, noise_level)
-                        print(f"    Successfully generated faulted layers sample {sample_idx + 1}")
                     elif pattern_class == 'intrusion_patterns':
-                        print(f"    Generating intrusion patterns sample {sample_idx + 1}")
                         image = self._generate_intrusion_patterns(image_size, num_layers_range, noise_level)
-                        print(f"    Successfully generated intrusion patterns sample {sample_idx + 1}")
                     elif pattern_class == 'unconformity_patterns':
-                        print(f"    Generating unconformity patterns sample {sample_idx + 1}")
                         image = self._generate_unconformity_patterns(image_size, num_layers_range, noise_level)
-                        print(f"    Successfully generated unconformity patterns sample {sample_idx + 1}")
                     else:
                         raise ValueError(f"Unknown pattern class: {pattern_class}")
                     
-                    print(f"    Generated image shape: {image.shape}")
-                    class_images.append(image)
+                    # Convert to 0-255 range for PNG saving
+                    image_uint8 = (image * 255).astype(np.uint8)
+                    
+                    # Save as PNG file with consistent naming
+                    filename = class_dir / f"{pattern_class}_{sample_idx:04d}.png"
+                    Image.fromarray(image_uint8, mode='L').save(filename)
+                    
+                    # Store relative path for metadata
+                    relative_filename = str(filename.relative_to(output_path))
+                    all_filenames.append(relative_filename)
+                    all_labels.append(class_idx)
                     
                 except Exception as e:
-                    print(f"    Error generating {pattern_class} sample {sample_idx}: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    logger.error(f"Error generating {pattern_class} sample {sample_idx}: {e}")
                     raise
-            
-            # Convert to numpy array
-            print(f"  Converting {len(class_images)} images to numpy array...")
-            try:
-                class_images_array = np.array(class_images)
-                print(f"  Class images array shape: {class_images_array.shape}")
-                all_images.extend(class_images)
-                all_labels.extend([class_idx] * num_samples_per_class)
-            except Exception as e:
-                print(f"  Error converting to numpy array: {e}")
-                print(f"  Individual image shapes: {[img.shape for img in class_images[:3]]}")
-                raise
         
-        # Convert to numpy arrays
-        images = np.array(all_images)
-        labels = np.array(all_labels)
-        
-        # Create dataset info
+        # Create dataset info in the same format as original
         dataset_info = {
-            'images': images,
-            'labels': labels,
-            'class_names': self.pattern_classes,
-            'metadata': {
-                'num_classes': len(self.pattern_classes),
+            'filenames': all_filenames,
+            'labels': all_labels,
+            'label_names': self.pattern_classes,
+            'params': {
                 'image_size': image_size,
                 'num_samples_per_class': num_samples_per_class,
-                'total_samples': len(images),
-                'generation_params': {
-                    'num_layers_range': num_layers_range,
-                    'noise_level': noise_level,
-                    'random_seed': random_seed
-                }
+                'num_layers_range': num_layers_range,
+                'noise_level': noise_level,
+                'random_seed': random_seed,
+                'num_classes': len(self.pattern_classes),
+                'total_samples': len(all_filenames)
             }
         }
         
-        # Save dataset
-        if output_dir:
-            self.save(dataset_info, output_dir)
-            logger.info(f"Dataset saved to {output_dir}")
+        # Save dataset info as .npy file (same as original format)
+        np.save(output_path / 'dataset_info.npy', dataset_info)
+        
+        logger.info(f"Dataset saved to {output_path}")
+        logger.info(f"Generated {len(all_filenames)} total samples across {len(self.pattern_classes)} classes")
         
         # Store dataset info internally
         self._dataset_info = dataset_info
@@ -357,7 +359,7 @@ class LayeredGeologicalDataset(BaseDataset):
     
     def save(self, dataset_info: Dict[str, Any], output_path: Union[str, Path]) -> None:
         """
-        Save dataset to disk.
+        Save dataset to disk using the original format.
         
         Args:
             dataset_info: Dataset information dictionary
@@ -366,76 +368,44 @@ class LayeredGeologicalDataset(BaseDataset):
         output_path = Path(output_path)
         output_path.mkdir(exist_ok=True)
         
-        # Save dataset arrays
+        # Save dataset info as .npy file (same as original format)
         np.save(output_path / 'dataset_info.npy', dataset_info)
-        np.save(output_path / 'images.npy', dataset_info['images'])
-        np.save(output_path / 'labels.npy', dataset_info['labels'])
         
-        # Save metadata as JSON
-        metadata = {k: v for k, v in dataset_info.items() 
-                   if k not in ['images', 'labels']}
-        
-        # Convert numpy types to Python types for JSON serialization
-        def convert_numpy_types(obj):
-            if isinstance(obj, np.integer):
-                return int(obj)
-            elif isinstance(obj, np.floating):
-                return float(obj)
-            elif isinstance(obj, np.ndarray):
-                return obj.tolist()
-            return obj
-        
-        # Recursively convert numpy types
-        def recursive_convert(obj):
-            if isinstance(obj, dict):
-                return {k: recursive_convert(v) for k, v in obj.items()}
-            elif isinstance(obj, (list, tuple)):
-                return [recursive_convert(item) for item in obj]
-            else:
-                return convert_numpy_types(obj)
-        
-        metadata = recursive_convert(metadata)
-        
-        with open(output_path / 'metadata.json', 'w') as f:
-            json.dump(metadata, f, indent=2)
-        
-        print(f"Dataset saved to {output_path}")
+        logger.info(f"Dataset metadata saved to {output_path / 'dataset_info.npy'}")
     
     def load(self, dataset_path: Union[str, Path]) -> Dict[str, Any]:
         """
         Load an existing dataset from disk.
         
         Args:
-            dataset_path: Path to the dataset directory
+            dataset_path: Path to the dataset directory or dataset_info.npy file
             
         Returns:
             Dictionary containing dataset information and metadata
         """
         dataset_path = Path(dataset_path)
         
-        if not dataset_path.exists():
-            raise FileNotFoundError(f"Dataset path does not exist: {dataset_path}")
-        
-        # Try to load the complete dataset_info.npy first
-        dataset_info_path = dataset_path / 'dataset_info.npy'
-        if dataset_info_path.exists():
-            dataset_info = np.load(dataset_info_path, allow_pickle=True).item()
+        # Handle both directory path and direct file path
+        if dataset_path.is_file() and dataset_path.name == 'dataset_info.npy':
+            dataset_info_path = dataset_path
         else:
-            # Load components separately
-            images = np.load(dataset_path / 'images.npy')
-            labels = np.load(dataset_path / 'labels.npy')
-            
-            # Load metadata
-            with open(dataset_path / 'metadata.json', 'r') as f:
-                metadata = json.load(f)
-            
-            dataset_info = {
-                'images': images,
-                'labels': labels,
-                **metadata
-            }
+            dataset_info_path = dataset_path / 'dataset_info.npy'
+        
+        if not dataset_info_path.exists():
+            raise FileNotFoundError(f"Dataset info file does not exist: {dataset_info_path}")
+        
+        # Load the dataset info
+        dataset_info = np.load(dataset_info_path, allow_pickle=True).item()
+        
+        # Validate the loaded data structure
+        required_keys = ['filenames', 'labels', 'label_names', 'params']
+        for key in required_keys:
+            if key not in dataset_info:
+                raise ValueError(f"Invalid dataset format: missing key '{key}'")
         
         self._dataset_info = dataset_info
         self._is_generated = True
+        
+        logger.info(f"Loaded dataset with {len(dataset_info['filenames'])} samples from {dataset_info_path}")
         
         return dataset_info 

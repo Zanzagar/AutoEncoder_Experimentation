@@ -128,11 +128,10 @@ def plot_class_distribution(
     figure_size : tuple, default=(10, 6)
         Size of the figure to display
     """
-    if not dataset_info.get('labels'):
+    labels = dataset_info.get('labels')
+    if labels is None or len(labels) == 0:
         print("Error: No labels found in dataset_info.")
         return
-        
-    labels = dataset_info['labels']
     
     # Handle both 'label_names' and 'class_names'
     label_names = dataset_info.get('label_names', 

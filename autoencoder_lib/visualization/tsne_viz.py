@@ -124,7 +124,7 @@ def visualize_raw_data_tsne(
     
     # Calculate silhouette score on t-SNE results
     if len(np.unique(y)) > 1:  # Need at least 2 classes for silhouette score
-        silhouette = silhouette_score(X_tsne, y)
+        silhouette = float(silhouette_score(X_tsne, y))  # Convert to Python float
         print(f"Silhouette score on t-SNE embedding: {silhouette:.4f}")
     else:
         silhouette = 0.0
@@ -205,7 +205,7 @@ def visualize_latent_tsne(
     
     # Calculate silhouette score
     if len(np.unique(labels)) > 1:
-        silhouette = silhouette_score(latent_tsne, labels)
+        silhouette = float(silhouette_score(latent_tsne, labels))  # Convert to Python float
         print(f"Silhouette score on latent t-SNE embedding: {silhouette:.4f}")
     else:
         silhouette = 0.0

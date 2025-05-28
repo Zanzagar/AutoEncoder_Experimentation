@@ -155,7 +155,9 @@ figures/
 # Dataset directories (keep structure but ignore large files)
 **/dataset/
 **/datasets/
-**/data/
+# Ignore data directories but not source code data modules
+data/
+!autoencoder_lib/data/
 latent_dim_exploration_results_*/
 layered_geologic_patterns_dataset/
 

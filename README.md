@@ -19,7 +19,33 @@ This project investigates how autoencoder neural networks represent different ty
 - ✅ Git repository setup with comprehensive .gitignore
 - ✅ GitHub repository created and connected
 - ✅ Development environment configured
-- 🔄 Python package structure creation (in progress)
+- ✅ Python package structure created
+- 🔄 Data module implementation (in progress)
+
+## 📓 Jupyter Notebook Development
+
+### **CRITICAL: notebook_mcp Tools Required**
+
+**⚠️ IMPORTANT**: All Jupyter notebook operations MUST use the `notebook_mcp` tools to prevent corruption:
+
+- **NEVER use standard file editing tools** on `.ipynb` files
+- **ALWAYS use notebook_mcp tools** for reading, editing, and creating notebooks
+- **Investigate notebook issues independently** using available MCP tools
+
+### Available Tools
+- **File Operations**: Create, delete, rename notebooks
+- **Cell Operations**: Add, edit, delete, move, split, merge cells
+- **Content Reading**: Read cells, metadata, outputs
+- **Validation**: Validate notebook structure
+- **Export**: Convert to other formats
+
+### Best Practices
+- Use notebooks as **interfaces** to the `autoencoder_lib` package
+- Keep **core logic in Python modules**, not notebook cells
+- **Import and use package functions** rather than defining in notebooks
+- Maintain **clean separation** between package code and notebook interface
+
+See [`.cursor/rules/jupyter-notebook-mcp.mdc`](.cursor/rules/jupyter-notebook-mcp.mdc) for complete guidelines.
 
 ## 🛠️ Development Environment Setup
 

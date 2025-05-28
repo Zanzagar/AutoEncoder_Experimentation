@@ -5,6 +5,12 @@ alwaysApply: false
 ---
 # Implementation Plan
 
+## **CRITICAL: Jupyter Notebook Operations**
+
+- **ALWAYS use notebook_mcp tools for .ipynb files** - See [jupyter-notebook-mcp.mdc](mdc:.cursor/rules/jupyter-notebook-mcp.mdc)
+- **NEVER use standard `edit_file` on notebooks** - this corrupts the structure
+- **Investigate notebook issues independently** using available MCP tools before asking
+
 ## Phase 0: Immediate Migration to Python Package Structure
 
 ### Priority 0: Git Workflow Setup and Version Control
@@ -40,6 +46,7 @@ alwaysApply: false
 1. **Extract and Organize Current Notebook Code into Python Package**:
    - **Git Branch**: `feature/create-package-structure`
    - Create `autoencoder_lib` package with proper Python package structure
+   - **Use notebook_mcp tools** to read and analyze existing notebook content
    - Migrate all functionality from `AutoEncoderJupyterTest.ipynb` into modular components:
      - `autoencoder_lib/data/`: Dataset generation and loading utilities
      - `autoencoder_lib/models/`: Autoencoder architecture definitions and model classes
@@ -61,6 +68,7 @@ alwaysApply: false
 
 3. **Create New Jupyter Notebook Interface**:
    - **Git Branch**: `feature/create-notebook-interface`
+   - **Use notebook_mcp tools** to create and modify the new notebook
    - Design new notebook that imports and uses the `autoencoder_lib` package
    - Implement four main code blocks corresponding to the four wrapper functions
    - Maintain similar input structure to current notebook for ease of transition

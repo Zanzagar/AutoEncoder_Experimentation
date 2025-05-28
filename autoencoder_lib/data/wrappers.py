@@ -20,6 +20,7 @@ from typing import Dict, Any, Optional, Union, List, Tuple
 from pathlib import Path
 import json
 import logging
+from PIL import Image
 from .geological import LayeredGeologicalDataset
 from .layered_geological import (
     generate_layered_dataset, 
@@ -274,28 +275,50 @@ def _analyze_unified_format(
     if len(sample_indices) > max_samples_for_tsne:
         sample_indices = np.random.choice(sample_indices, max_samples_for_tsne, replace=False)
     
-    # Get the base directory from the first filename
+    # Determine base directory for image files
+    # The filenames in the unified format are relative to the dataset directory
     first_filename = dataset_info['filenames'][0]
-    if '/' in first_filename or '\\' in first_filename:
-        # Relative path - need to find the base directory
-        # This is a bit tricky, but we can try to infer it
-        base_dir = Path(first_filename).parent.parent
-    else:
-        # Assume current directory
+    
+    # Try to find the base directory by looking for existing files
+    base_dir = None
+    possible_dirs = [Path('.'), Path('demo_original_dataset'), Path('demo_enhanced_dataset')]
+    
+    # Also check if we can infer from the filename structure
+    if '/' in first_filename:
+        possible_dirs.append(Path(first_filename).parent.parent)
+    
+    for test_dir in possible_dirs:
+        test_path = test_dir / first_filename
+        if test_path.exists():
+            base_dir = test_dir
+            break
+    
+    if base_dir is None:
+        # Try to infer from the current working directory
+        logger.warning("Could not determine base directory, using current directory")
         base_dir = Path('.')
+    
+    logger.info(f"Using base directory: {base_dir}")
     
     for idx in sample_indices:
         img_path = base_dir / dataset_info['filenames'][idx]
-        if not img_path.exists():
-            # Try without base_dir (absolute path)
-            img_path = Path(dataset_info['filenames'][idx])
         
         if img_path.exists():
-            img = plt.imread(str(img_path))
-            if len(img.shape) == 3:
-                img = np.mean(img, axis=2)  # Convert to grayscale if needed
-            images.append(img.flatten())
-            labels.append(dataset_info['labels'][idx])
+            try:
+                # Use PIL to load the image more reliably
+                img = Image.open(img_path)
+                img_array = np.array(img)
+                
+                # Convert to grayscale if needed
+                if len(img_array.shape) == 3:
+                    img_array = np.mean(img_array, axis=2)
+                elif len(img_array.shape) == 4:  # RGBA
+                    img_array = np.mean(img_array[:, :, :3], axis=2)
+                
+                images.append(img_array.flatten())
+                labels.append(dataset_info['labels'][idx])
+            except Exception as e:
+                logger.warning(f"Could not load image {img_path}: {e}")
         else:
             logger.warning(f"Could not find image file: {img_path}")
     
@@ -306,9 +329,11 @@ def _analyze_unified_format(
     labels = np.array(labels)
     class_names = dataset_info['label_names']
     
+    logger.info(f"Loaded {len(images)} images for analysis")
+    
     # Perform dimensionality reduction
     logger.info("Computing t-SNE projection...")
-    tsne = TSNE(n_components=2, perplexity=tsne_perplexity, random_state=tsne_random_state)
+    tsne = TSNE(n_components=2, perplexity=min(tsne_perplexity, len(images)-1), random_state=tsne_random_state)
     tsne_result = tsne.fit_transform(images)
     
     logger.info("Computing PCA projection...")

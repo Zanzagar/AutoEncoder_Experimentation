@@ -13,15 +13,17 @@ The AutoEncoder Experimentation Framework is a research tool designed to investi
 - Results stored in `latent_dim_exploration_results_layered_geology/`
 - Framework is functional but requires migration to maintainable Python package structure
 - **Critical Need**: Proper version control workflow must be established for migration
+- **Critical Need**: Proper Jupyter notebook handling using notebook_mcp tools
 
 ### 1.3 Business Justification
-The current Jupyter notebook approach has become unwieldy for systematic research. Migration to a Python package with proper Git workflow will:
+The current Jupyter notebook approach has become unwieldy for systematic research. Migration to a Python package with proper Git workflow and notebook_mcp tools will:
 - Enable reproducible research with consistent visualization
 - Support generic datasets and architectures
 - Facilitate collaboration and code reuse through version control
 - Provide a clean interface for complex experiments
 - Enable systematic debugging and testing with change tracking
 - Ensure code integrity and backup through Git repository management
+- **Prevent notebook corruption** through proper notebook_mcp tool usage
 
 ## 2. Product Vision and Goals
 
@@ -140,9 +142,60 @@ Create a modular, extensible Python package that enables systematic exploration 
   - "Add training data to performance grid visualization"
   - "Create wrapper function for experiment execution"
 
-### 4.2 Core Package Structure
+### 4.2 Jupyter Notebook Development Requirements
 
-#### 4.2.1 autoencoder_lib Package Organization
+#### 4.2.1 Critical Tool Usage
+**⚠️ MANDATORY**: All Jupyter notebook operations MUST use `notebook_mcp` tools to prevent corruption:
+- **NEVER use standard `edit_file` tool** on `.ipynb` files
+- **ALWAYS use notebook_mcp tools** for reading, editing, and creating notebooks
+- **Investigate notebook issues independently** using available MCP tools before asking for help
+
+#### 4.2.2 Available notebook_mcp Tools
+**File Operations**:
+- `mcp_notebook_mcp_notebook_create`: Create new notebooks
+- `mcp_notebook_mcp_notebook_delete`: Delete notebooks
+- `mcp_notebook_mcp_notebook_rename`: Rename/move notebooks
+
+**Reading and Analysis**:
+- `mcp_notebook_mcp_notebook_read`: Read entire notebook structure
+- `mcp_notebook_mcp_notebook_read_cell`: Read specific cell content
+- `mcp_notebook_mcp_notebook_get_cell_count`: Get total cell count
+- `mcp_notebook_mcp_notebook_get_info`: Get notebook information
+- `mcp_notebook_mcp_notebook_read_metadata`: Read notebook metadata
+
+**Cell Operations**:
+- `mcp_notebook_mcp_notebook_add_cell`: Add new cells
+- `mcp_notebook_mcp_notebook_edit_cell`: Edit cell content
+- `mcp_notebook_mcp_notebook_delete_cell`: Delete cells
+- `mcp_notebook_mcp_notebook_move_cell`: Move cell positions
+- `mcp_notebook_mcp_notebook_change_cell_type`: Change cell types
+
+**Validation and Export**:
+- `mcp_notebook_mcp_notebook_validate`: Validate notebook structure
+- `mcp_notebook_mcp_notebook_export`: Export to other formats
+
+#### 4.2.3 Development Workflow Integration
+**Investigation Strategy**:
+1. Use `mcp_notebook_mcp_notebook_get_info` to understand notebook structure
+2. Use `mcp_notebook_mcp_notebook_read_cell` to examine specific cells
+3. Use reading tools to understand context before making changes
+4. Ask for clarification only if information cannot be determined from tools
+
+**Content Guidelines**:
+- Use `$ ... $` for inline math and `$$ ... $$` for display math
+- Avoid unsupported cell magics (`%%bash`, `%%timeit`, `%%writefile`)
+- Use `!command` for shell commands instead of `%%bash`
+- Always validate notebooks after major changes
+
+**Best Practices**:
+- Use notebooks as **interfaces** to the `autoencoder_lib` package
+- Keep **core logic in Python modules**, not notebook cells
+- **Import and use package functions** rather than defining in notebooks
+- Maintain **clean separation** between package code and notebook interface
+
+### 4.3 Core Package Structure
+
+#### 4.3.1 autoencoder_lib Package Organization
 ```
 autoencoder_lib/
 ├── data/                    # Dataset generation and loading utilities
@@ -153,7 +206,7 @@ autoencoder_lib/
 └── __init__.py             # Package initialization and exports
 ```
 
-#### 4.2.2 Module Specifications
+#### 4.3.2 Module Specifications
 
 **Data Module (autoencoder_lib/data/)**
 - Dataset generation utilities for any generic dataset
@@ -194,9 +247,9 @@ autoencoder_lib/
 - Logging and progress tracking
 - Helper functions for common operations
 
-### 4.3 Wrapper Function Specifications
+### 4.4 Wrapper Function Specifications
 
-#### 4.3.1 Dataset Generation Wrapper
+#### 4.4.1 Dataset Generation Wrapper
 **Function**: `generate_dataset(dataset_type, output_path, **kwargs)`
 **Purpose**: Generate any generic dataset with automatic visualization
 **Parameters**:
@@ -213,7 +266,7 @@ autoencoder_lib/
 - Visualization showing examples from each class
 - Dataset metadata and statistics
 
-#### 4.3.2 Dataset Visualization Wrapper
+#### 4.4.2 Dataset Visualization Wrapper
 **Function**: `visualize_dataset(dataset_path, **kwargs)`
 **Purpose**: Create t-SNE projection and analysis of existing dataset
 **Parameters**:
@@ -228,7 +281,7 @@ autoencoder_lib/
 - Dataset statistics and class distribution
 - Feature analysis summary
 
-#### 4.3.3 Experiment Runner Wrapper
+#### 4.4.3 Experiment Runner Wrapper
 **Function**: `run_experiments(dataset_path, output_dir, **kwargs)`
 **Purpose**: Systematic exploration of autoencoder models
 **Parameters**:
@@ -248,7 +301,7 @@ autoencoder_lib/
 - Performance grids for training and test data
 - Latent space analysis and t-SNE projections
 
-#### 4.3.4 Results Loader Wrapper
+#### 4.4.4 Results Loader Wrapper
 **Function**: `load_results(model_dir, dataset_dir, timestamp_dir, **kwargs)`
 **Purpose**: Load and visualize results from saved experiments
 **Parameters**:
@@ -263,9 +316,9 @@ autoencoder_lib/
 - Latent space analysis with same random seeds
 - Reconstruction examples using same images as training run
 
-### 4.4 Critical Bug Fixes and Improvements
+### 4.5 Critical Bug Fixes and Improvements
 
-#### 4.4.1 Visualization Consistency Issues
+#### 4.5.1 Visualization Consistency Issues
 **Problem**: t-SNE projections use different seeds between run and load operations
 **Solution**: Implement consistent random state management with explicit seed parameters
 **Git Branch**: `bugfix/seed-consistency`
@@ -282,7 +335,7 @@ autoencoder_lib/
 **Solution**: Ensure identical visualization parameters and random seeds between operations
 **Git Branch**: `feature/visualization-validation`
 
-#### 4.4.2 Generalization Requirements
+#### 4.5.2 Generalization Requirements
 **Requirement**: Support any generic dataset input
 **Implementation**: Abstract dataset interface with pluggable dataset generators
 **Git Branch**: `feature/generic-dataset-support`

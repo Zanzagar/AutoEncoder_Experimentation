@@ -1,0 +1,150 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Jupyter Notebook MCP Tools Rules
+
+## **Critical Rule: Always Use notebook_mcp Tools**
+
+- **NEVER use standard `edit_file` tool on `.ipynb` files** - this can corrupt the notebook structure
+- **ALWAYS use the notebook_mcp tools** provided by the MCP server for all Jupyter notebook operations
+- **Investigate first** using available tools before asking for clarification
+
+## **Available notebook_mcp Tools**
+
+### **File Operations**
+- `mcp_notebook_mcp_notebook_create`: Create new notebook
+- `mcp_notebook_mcp_notebook_delete`: Delete notebook
+- `mcp_notebook_mcp_notebook_rename`: Rename/move notebook
+
+### **Reading and Information**
+- `mcp_notebook_mcp_notebook_read`: Read entire notebook structure
+- `mcp_notebook_mcp_notebook_read_cell`: Read specific cell content
+- `mcp_notebook_mcp_notebook_get_cell_count`: Get total cell count
+- `mcp_notebook_mcp_notebook_get_info`: Get notebook info (cell count, kernel, language)
+- `mcp_notebook_mcp_notebook_read_metadata`: Read notebook metadata
+- `mcp_notebook_mcp_notebook_read_cell_metadata`: Read cell metadata
+- `mcp_notebook_mcp_notebook_read_cell_output`: Read cell outputs
+
+### **Cell Manipulation**
+- `mcp_notebook_mcp_notebook_add_cell`: Add new cell
+- `mcp_notebook_mcp_notebook_edit_cell`: Edit cell content
+- `mcp_notebook_mcp_notebook_delete_cell`: Delete cell
+- `mcp_notebook_mcp_notebook_move_cell`: Move cell position
+- `mcp_notebook_mcp_notebook_change_cell_type`: Change cell type (code/markdown/raw)
+- `mcp_notebook_mcp_notebook_duplicate_cell`: Duplicate cell
+- `mcp_notebook_mcp_notebook_split_cell`: Split cell at line
+- `mcp_notebook_mcp_notebook_merge_cells`: Merge adjacent cells
+
+### **Metadata Operations**
+- `mcp_notebook_mcp_notebook_edit_metadata`: Edit notebook metadata
+- `mcp_notebook_mcp_notebook_edit_cell_metadata`: Edit cell metadata
+
+### **Output Management**
+- `mcp_notebook_mcp_notebook_clear_cell_outputs`: Clear specific cell outputs
+- `mcp_notebook_mcp_notebook_clear_all_outputs`: Clear all outputs
+
+### **Utility Operations**
+- `mcp_notebook_mcp_notebook_validate`: Validate notebook structure
+- `mcp_notebook_mcp_notebook_export`: Export to other formats
+
+## **Investigation Strategy**
+
+### **Before Making Changes**
+1. **Use `mcp_notebook_mcp_notebook_get_info`** to understand notebook structure
+2. **Use `mcp_notebook_mcp_notebook_read_cell`** to examine specific cells
+3. **Use `mcp_notebook_mcp_notebook_get_cell_count`** to understand scope
+4. **Use `mcp_notebook_mcp_notebook_read_metadata`** for configuration details
+
+### **When User Reports Issues**
+1. **Investigate independently first** using reading tools
+2. **Locate the problematic cell** using cell reading functions
+3. **Understand the context** before proposing solutions
+4. **Ask for clarification only** if information cannot be determined from tools
+
+## **Content Guidelines**
+
+### **Math Notation**
+- **Use `$ ... $` for inline math** and `$$ ... $$` for display math
+- **Avoid `\( ... \)` and `\[ ... \]`** - these don't render properly in Jupyter
+
+### **Cell Magics**
+- **Avoid unsupported magics**: `%%bash`, `%%timeit`, `%%writefile`
+- **Use `!command`** for shell commands instead of `%%bash`
+- **Use `%timeit`** (line magic) for timing single statements
+- **`%%html` works** for rendering HTML output
+- **`%%javascript` can execute** but avoid relying on it for display manipulation
+
+### **Character Escaping in Source Parameter**
+- **Newlines must be `\n`** (not `\\n`)
+- **LaTeX commands use single backslashes** (e.g., `\Sigma`, not `\\Sigma`)
+- **After complex edits**, use `mcp_notebook_mcp_notebook_read_cell` to verify content
+
+## **Best Practices**
+
+### **Cell Organization**
+- **Keep cells focused and modular** for easier debugging
+- **Use markdown cells** for documentation and explanations
+- **Maintain logical execution order** for reproducibility
+
+### **Code Quality**
+- **Follow PEP 8** style guidelines
+- **Use descriptive variable names**
+- **Include proper error handling**
+- **Add comments for complex operations**
+
+### **Data Analysis Workflow**
+- **Start with data exploration** and summary statistics
+- **Create reusable functions** for consistent operations
+- **Document assumptions and methodologies**
+- **Validate data quality** early in the process
+
+### **Visualization Standards**
+- **Use matplotlib** for low-level control
+- **Use seaborn** for statistical plots
+- **Include proper labels, titles, legends**
+- **Consider accessibility** (color-blind friendly palettes)
+
+## **Error Prevention**
+
+### **Common Pitfalls to Avoid**
+- **Never edit .ipynb files directly** with text editors or standard file tools
+- **Don't rely on unsupported cell magics**
+- **Avoid complex string escaping** without verification
+- **Don't assume notebook state** - always investigate first
+
+### **Verification Steps**
+- **Always validate notebooks** after major changes using `mcp_notebook_mcp_notebook_validate`
+- **Read back edited cells** to confirm content is correct
+- **Test execution order** to ensure reproducibility
+- **Check outputs** are preserved when needed
+
+## **Integration with AutoEncoder Project**
+
+### **Package Development Workflow**
+- **Use notebooks for interface and testing** of the `autoencoder_lib` package
+- **Keep core logic in Python modules** not in notebook cells
+- **Import and use package functions** rather than defining in notebooks
+- **Maintain clean separation** between package code and notebook interface
+
+### **Experiment Documentation**
+- **Document experiment parameters** in markdown cells
+- **Save results to files** rather than relying on notebook outputs
+- **Use consistent naming conventions** for experiments
+- **Version control notebooks** alongside package code
+
+## **Migration Considerations**
+
+### **From Existing Notebooks**
+- **Extract reusable code** to Python modules first
+- **Keep notebook as interface** to the extracted functionality
+- **Preserve all visualization capabilities** during migration
+- **Maintain backward compatibility** where possible
+
+### **Future Development**
+- **All new notebook work** must use notebook_mcp tools
+- **Update existing workflows** to use proper tools
+- **Train team members** on correct tool usage
+- **Document tool usage** in project documentation
+

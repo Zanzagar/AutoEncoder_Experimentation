@@ -13,8 +13,8 @@ from torch.utils.data import DataLoader
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
 
-from ..visualization.latent_space import visualize_latent_space
-from ..visualization.reconstructions import visualize_reconstructions, visualize_dual_reconstructions
+from ..visualization.latent_viz import visualize_latent_space_2d as visualize_latent_space
+from ..visualization.reconstruction_viz import visualize_reconstructions
 
 
 class ExperimentRunner:

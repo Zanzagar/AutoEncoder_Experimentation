@@ -19,7 +19,11 @@ from .experiment_reporting import (
     generate_comprehensive_report,
     analyze_reconstruction_quality,
     generate_reconstruction_comparison_report,
-    create_reconstruction_visualization_batch
+    create_reconstruction_visualization_batch,
+    create_performance_heatmaps,
+    analyze_hyperparameter_sensitivity,
+    identify_optimal_configurations,
+    generate_performance_surfaces
 )
 
 __all__ = [
@@ -38,5 +42,11 @@ __all__ = [
     # Reconstruction analysis functions
     'analyze_reconstruction_quality',
     'generate_reconstruction_comparison_report',
-    'create_reconstruction_visualization_batch'
+    'create_reconstruction_visualization_batch',
+    
+    # Performance grid analysis functions
+    'create_performance_heatmaps',
+    'analyze_hyperparameter_sensitivity',
+    'identify_optimal_configurations',
+    'generate_performance_surfaces'
 ] 

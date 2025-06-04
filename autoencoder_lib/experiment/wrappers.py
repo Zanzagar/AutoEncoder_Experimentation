@@ -28,7 +28,11 @@ from .experiment_reporting import (
     generate_comprehensive_report,
     analyze_reconstruction_quality,
     generate_reconstruction_comparison_report,
-    create_reconstruction_visualization_batch
+    create_reconstruction_visualization_batch,
+    create_performance_heatmaps,
+    analyze_hyperparameter_sensitivity,
+    identify_optimal_configurations,
+    generate_performance_surfaces
 )
 from ..models import create_autoencoder, MODEL_ARCHITECTURES
 from ..data import generate_dataset
@@ -355,8 +359,68 @@ def run_systematic_experiments(
             show_best_worst=True
         )
         
-        # Combine file paths from both reports
-        all_visualization_files = {**visualization_files, **reconstruction_files}
+        # 🎯 Generate comprehensive grid-based performance analysis
+        if generate_visualizations:
+            print("\n🔥 Generating Performance Grid Analysis...")
+            print("=" * 55)
+            
+            # 1. Create performance heatmaps (Architecture × Latent Dimension matrices)
+            heatmap_files = create_performance_heatmaps(
+                experiment_results=all_results,
+                metrics=['final_test_loss', 'final_silhouette', 'training_time'],
+                output_dir=output_dir,
+                show_plots=not output_dir  # Show plots only if not saving to file
+            )
+            visualization_files.update(heatmap_files)
+            
+            # 2. Analyze hyperparameter sensitivity and importance
+            sensitivity_analysis = analyze_hyperparameter_sensitivity(
+                experiment_results=all_results,
+                metrics=['final_test_loss', 'final_silhouette', 'training_time'],
+                verbose=verbose
+            )
+            
+            # 3. Identify optimal configurations with statistical confidence
+            optimal_configs = identify_optimal_configurations(
+                experiment_results=all_results,
+                primary_metric='final_test_loss',
+                minimize_metric=True,
+                top_n=5,
+                verbose=verbose
+            )
+            
+            # 4. Generate 3D performance surfaces for key metrics
+            if verbose:
+                print("\n🌄 Generating 3D Performance Surfaces...")
+            
+            for metric in ['final_test_loss', 'final_silhouette']:
+                surface_file = generate_performance_surfaces(
+                    experiment_results=all_results,
+                    metric=metric,
+                    output_dir=output_dir,
+                    show_plots=not output_dir
+                )
+                if surface_file:
+                    visualization_files[f'surface_{metric}'] = surface_file
+            
+            # Store analysis results for potential export
+            analysis_results = {
+                'sensitivity_analysis': sensitivity_analysis,
+                'optimal_configurations': optimal_configs,
+                'heatmap_files': heatmap_files
+            }
+            
+            # Export analysis summary if output directory provided
+            if output_dir:
+                analysis_summary_path = Path(output_dir) / 'grid_analysis_summary.json'
+                with open(analysis_summary_path, 'w') as f:
+                    # Convert numpy types to native Python types for JSON serialization
+                    json_friendly_analysis = convert_to_json_serializable(analysis_results)
+                    json.dump(json_friendly_analysis, f, indent=2)
+                visualization_files['grid_analysis_summary'] = str(analysis_summary_path)
+                print(f"💾 Saved grid analysis summary: {analysis_summary_path}")
+            
+            all_visualization_files = {**visualization_files, **reconstruction_files}
         
         if verbose:
             print(f"\n✅ All visualizations and reconstruction analysis complete!")
@@ -663,5 +727,24 @@ def _make_json_serializable(obj: Any) -> Any:
         return float(obj)
     elif isinstance(obj, Path):
         return str(obj)
+    else:
+        return obj 
+
+def convert_to_json_serializable(obj):
+    """
+    Convert numpy types and other non-JSON-serializable types to native Python types.
+    """
+    if isinstance(obj, dict):
+        return {key: convert_to_json_serializable(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_json_serializable(item) for item in obj]
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.integer, np.int64, np.int32)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64, np.float32)):
+        return float(obj)
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
     else:
         return obj 

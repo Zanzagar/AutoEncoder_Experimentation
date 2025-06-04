@@ -22,7 +22,6 @@ from ..visualization.training_viz import (
     plot_multiple_performance_heatmaps,
     plot_3d_performance_surface,
     plot_performance_contour,
-    plot_training_curves,
     plot_performance_grid,
     plot_latent_dimension_analysis
 )
@@ -142,19 +141,7 @@ def generate_comprehensive_report(systematic_results: Dict[str, List[Dict[str, A
     
     generated_files = {}
     
-    # 1. Generate training curves for each experiment using core function
-    print("📊 Creating individual training curves...")
-    for architecture, results in systematic_results.items():
-        for result in results:
-            if 'history' in result and result['history']:
-                # Use core visualization function
-                save_path = Path(output_dir) / f"{result['experiment_name']}_training_curves.png" if output_dir else None
-                plot_training_curves(
-                    history=result['history'],
-                    save_path=str(save_path) if save_path else None
-                )
-    
-    # 2. Create performance grid using core function
+    # 1. Create performance grid using core function
     print("🔥 Creating performance analysis...")
     # Prepare data for core performance grid function
     performance_data = {}
@@ -170,7 +157,7 @@ def generate_comprehensive_report(systematic_results: Dict[str, List[Dict[str, A
         save_path=str(save_path)
     )
     
-    # 3. Create latent dimension analysis using core function  
+    # 2. Create latent dimension analysis using core function  
     print("🏗️ Creating latent dimension analysis...")
     for architecture, results in systematic_results.items():
         # Organize data by latent dimension
@@ -196,11 +183,11 @@ def generate_comprehensive_report(systematic_results: Dict[str, List[Dict[str, A
                 metrics_dict=metrics_dict
             )
     
-    # 4. Create comparison tables
+    # 3. Create comparison tables
     print("📋 Creating comparison tables...")
     df = create_comparison_tables(systematic_results)
     
-    # 5. Save experiment summary
+    # 4. Save experiment summary
     print("💾 Saving experiment summary...")
     csv_path = save_experiment_summary(systematic_results, save_dir=output_dir)
     generated_files['summary_csv'] = csv_path
@@ -208,7 +195,7 @@ def generate_comprehensive_report(systematic_results: Dict[str, List[Dict[str, A
     print("\n✅ Comprehensive visualization report complete!")
     print(f"📁 All files saved to: {output_dir}")
     
-    return generated_files 
+    return generated_files
 
 
 def analyze_reconstruction_quality(

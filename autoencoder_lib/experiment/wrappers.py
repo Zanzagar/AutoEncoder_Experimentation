@@ -19,7 +19,7 @@ import os
 import pandas as pd
 
 from .runner import ExperimentRunner
-from ..visualization.training_viz import plot_training_curves, plot_systematic_training_curves
+from ..visualization.training_viz import plot_systematic_training_curves
 from ..visualization import (
     plot_performance_grid,  
     plot_latent_dimension_analysis

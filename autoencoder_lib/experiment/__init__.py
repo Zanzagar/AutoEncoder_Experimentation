@@ -11,7 +11,9 @@ from .wrappers import (
     run_single_experiment,
     run_systematic_experiments,
     load_experiment_results,
-    analyze_experiment_results
+    analyze_experiment_results,
+    run_latent_analysis_experiment,
+    run_systematic_latent_analysis
 )
 from .experiment_reporting import (
     create_comparison_tables,
@@ -25,6 +27,15 @@ from .experiment_reporting import (
     identify_optimal_configurations,
     generate_performance_surfaces
 )
+from .latent_analysis import (
+    analyze_latent_space,
+    create_latent_tsne_analysis,
+    perform_latent_clustering,
+    generate_latent_interpolations,
+    analyze_latent_traversals,
+    calculate_latent_metrics,
+    run_complete_latent_analysis
+)
 
 __all__ = [
     # Core experiment functionality
@@ -33,6 +44,8 @@ __all__ = [
     'run_systematic_experiments', 
     'load_experiment_results',
     'analyze_experiment_results',
+    'run_latent_analysis_experiment',
+    'run_systematic_latent_analysis',
     
     # Experiment reporting functions (orchestrate core visualization)
     'create_comparison_tables',
@@ -48,5 +61,14 @@ __all__ = [
     'create_performance_heatmaps',
     'analyze_hyperparameter_sensitivity',
     'identify_optimal_configurations',
-    'generate_performance_surfaces'
+    'generate_performance_surfaces',
+    
+    # Latent space analysis functions
+    'analyze_latent_space',
+    'create_latent_tsne_analysis',
+    'perform_latent_clustering',
+    'generate_latent_interpolations',
+    'analyze_latent_traversals',
+    'calculate_latent_metrics',
+    'run_complete_latent_analysis'
 ] 

@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
 from torch.utils.data import DataLoader, TensorDataset
+import os
+import pandas as pd
 
 from .runner import ExperimentRunner
 from ..visualization import (
@@ -37,6 +39,7 @@ from .experiment_reporting import (
 from ..models import create_autoencoder, MODEL_ARCHITECTURES
 from ..data import generate_dataset
 from ..utils.reproducibility import set_seed, SeedContext
+from .latent_analysis import run_complete_latent_analysis
 
 
 def run_single_experiment(
@@ -748,3 +751,282 @@ def convert_to_json_serializable(obj):
         return bool(obj)
     else:
         return obj 
+
+def run_latent_analysis_experiment(
+    experiment_results: Dict[str, Any],
+    include_interpolations: bool = True,
+    include_traversals: bool = True,
+    output_dir: Optional[str] = None,
+    device: Optional[str] = None,
+    verbose: bool = True
+) -> Dict[str, Any]:
+    """
+    Run comprehensive latent space analysis on experiment results.
+    
+    Args:
+        experiment_results: Results from run_single_experiment or loaded results
+        include_interpolations: Whether to generate interpolation analysis
+        include_traversals: Whether to generate traversal analysis
+        output_dir: Directory to save latent analysis results
+        device: Device to run analysis on ('cpu', 'cuda', 'mps')
+        verbose: Whether to show detailed progress
+        
+    Returns:
+        Dictionary containing complete latent analysis results
+    """
+    if verbose:
+        print("🔬 Starting latent space analysis experiment...")
+        print("=" * 60)
+    
+    # Set up device
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    else:
+        device = torch.device(device)
+    
+    if verbose:
+        print(f"   Using device: {device}")
+    
+    # Load model from experiment results
+    model = experiment_results.get('model')
+    if model is None:
+        model_path = experiment_results.get('model_path')
+        if model_path and os.path.exists(model_path):
+            # Reconstruct model from config and load weights
+            config = experiment_results.get('config', {})
+            from autoencoder_lib.models import get_autoencoder_model
+            
+            model = get_autoencoder_model(
+                architecture=config.get('architecture', 'simple_linear'),
+                input_shape=config.get('input_shape', (1, 64, 64)),
+                latent_dim=config.get('latent_dim', 16)
+            )
+            model.load_state_dict(torch.load(model_path, map_location=device))
+            if verbose:
+                print(f"   ✅ Loaded model from {model_path}")
+        else:
+            raise ValueError("No model found in experiment results or model_path invalid")
+    
+    # Get data from experiment results
+    train_data = experiment_results.get('train_data')
+    train_labels = experiment_results.get('train_labels')
+    test_data = experiment_results.get('test_data')
+    test_labels = experiment_results.get('test_labels')
+    class_names = experiment_results.get('class_names')
+    
+    if any(x is None for x in [train_data, train_labels, test_data, test_labels]):
+        raise ValueError("Missing required data in experiment results")
+    
+    # Convert to tensors if needed
+    if not isinstance(train_data, torch.Tensor):
+        train_data = torch.tensor(train_data, dtype=torch.float32)
+    if not isinstance(train_labels, torch.Tensor):
+        train_labels = torch.tensor(train_labels, dtype=torch.long)
+    if not isinstance(test_data, torch.Tensor):
+        test_data = torch.tensor(test_data, dtype=torch.float32)
+    if not isinstance(test_labels, torch.Tensor):
+        test_labels = torch.tensor(test_labels, dtype=torch.long)
+    
+    # Set up output directory
+    if output_dir is None:
+        experiment_name = experiment_results.get('experiment_name', 'experiment')
+        output_dir = f"latent_analysis_{experiment_name}"
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
+    if verbose:
+        print(f"   Analyzing {len(train_data)} train + {len(test_data)} test samples")
+        print(f"   Classes: {class_names if class_names else 'Unnamed'}")
+        print(f"   Output directory: {output_dir}")
+    
+    # Run complete latent analysis
+    try:
+        latent_results = run_complete_latent_analysis(
+            model=model,
+            train_data=train_data,
+            train_labels=train_labels,
+            test_data=test_data,
+            test_labels=test_labels,
+            class_names=class_names,
+            device=device,
+            output_dir=output_dir,
+            include_interpolations=include_interpolations,
+            include_traversals=include_traversals
+        )
+        
+        # Add experiment metadata
+        latent_results['experiment_metadata'] = {
+            'original_experiment': experiment_results.get('experiment_name', 'unknown'),
+            'architecture': experiment_results.get('architecture', 'unknown'),
+            'latent_dim': experiment_results.get('latent_dim', 'unknown'),
+            'final_test_loss': experiment_results.get('history', {}).get('final_test_loss'),
+            'analysis_output_dir': output_dir,
+            'device_used': str(device),
+            'include_interpolations': include_interpolations,
+            'include_traversals': include_traversals
+        }
+        
+        if verbose:
+            print("=" * 60)
+            print("✨ Latent space analysis experiment completed successfully!")
+            print(f"   📂 All results saved to: {output_dir}")
+            summary = latent_results['analysis_summary']
+            print(f"   📊 Summary:")
+            print(f"     • Latent Dimension: {summary['latent_dimension']}")
+            print(f"     • Mean Silhouette Score: {summary['mean_silhouette_score']:.4f}")
+            print(f"     • Optimal Clusters: {summary['train_optimal_clusters']}/{summary['test_optimal_clusters']}")
+            if include_interpolations:
+                print(f"     • Interpolations: {summary['num_interpolations']}")
+            if include_traversals:
+                print(f"     • Traversals: {summary['num_traversals']}")
+        
+        return latent_results
+        
+    except Exception as e:
+        error_msg = f"Failed to run latent analysis: {str(e)}"
+        if verbose:
+            print(f"❌ {error_msg}")
+        return {'error': error_msg, 'experiment_metadata': experiment_results.get('experiment_name', 'unknown')}
+
+
+def run_systematic_latent_analysis(
+    systematic_results: Dict[str, List[Dict[str, Any]]],
+    max_experiments: int = 5,
+    include_interpolations: bool = False,
+    include_traversals: bool = False,
+    output_base_dir: str = "systematic_latent_analysis",
+    device: Optional[str] = None,
+    verbose: bool = True
+) -> Dict[str, Any]:
+    """
+    Run latent space analysis on multiple experiments from systematic results.
+    
+    Args:
+        systematic_results: Results from run_systematic_experiments
+        max_experiments: Maximum number of experiments to analyze
+        include_interpolations: Whether to generate interpolation analysis
+        include_traversals: Whether to generate traversal analysis
+        output_base_dir: Base directory for saving all analysis results
+        device: Device to run analysis on
+        verbose: Whether to show detailed progress
+        
+    Returns:
+        Dictionary containing analysis results for all experiments
+    """
+    if verbose:
+        print("🎯 Starting systematic latent space analysis...")
+        print("=" * 80)
+    
+    # Get successful experiments
+    successful_experiments = systematic_results.get('successful_results', [])
+    
+    if not successful_experiments:
+        return {'error': 'No successful experiments found in systematic results'}
+    
+    # Limit number of experiments to analyze
+    experiments_to_analyze = successful_experiments[:max_experiments]
+    
+    if verbose:
+        print(f"   Analyzing {len(experiments_to_analyze)} experiments out of {len(successful_experiments)} successful")
+        print(f"   Base output directory: {output_base_dir}")
+    
+    analysis_results = {}
+    comparison_data = []
+    
+    for i, experiment in enumerate(experiments_to_analyze):
+        exp_name = experiment.get('experiment_name', f'experiment_{i}')
+        
+        if verbose:
+            print(f"\n--- Analyzing Experiment {i+1}/{len(experiments_to_analyze)}: {exp_name} ---")
+        
+        # Set up experiment-specific output directory
+        exp_output_dir = os.path.join(output_base_dir, exp_name)
+        
+        try:
+            # Run latent analysis for this experiment
+            latent_results = run_latent_analysis_experiment(
+                experiment_results=experiment,
+                include_interpolations=include_interpolations,
+                include_traversals=include_traversals,
+                output_dir=exp_output_dir,
+                device=device,
+                verbose=verbose
+            )
+            
+            analysis_results[exp_name] = latent_results
+            
+            # Collect data for comparison
+            if 'analysis_summary' in latent_results:
+                summary = latent_results['analysis_summary']
+                comparison_data.append({
+                    'experiment_name': exp_name,
+                    'architecture': experiment.get('architecture', 'unknown'),
+                    'latent_dim': summary.get('latent_dimension', 0),
+                    'mean_silhouette_score': summary.get('mean_silhouette_score', 0),
+                    'train_optimal_clusters': summary.get('train_optimal_clusters', 0),
+                    'test_optimal_clusters': summary.get('test_optimal_clusters', 0),
+                    'latent_variance': summary.get('latent_variance', 0),
+                    'final_test_loss': experiment.get('history', {}).get('final_test_loss', 0)
+                })
+                
+        except Exception as e:
+            if verbose:
+                print(f"   ❌ Failed to analyze {exp_name}: {str(e)}")
+            analysis_results[exp_name] = {'error': str(e)}
+    
+    # Generate comparison analysis
+    comparison_analysis = {}
+    if comparison_data:
+        comparison_df = pd.DataFrame(comparison_data)
+        
+        comparison_analysis = {
+            'best_silhouette_experiment': comparison_df.loc[comparison_df['mean_silhouette_score'].idxmax()].to_dict(),
+            'best_clustering_experiment': comparison_df.loc[comparison_df['train_optimal_clusters'].idxmax()].to_dict(),
+            'lowest_variance_experiment': comparison_df.loc[comparison_df['latent_variance'].idxmin()].to_dict(),
+            'overall_statistics': {
+                'mean_silhouette_score': float(comparison_df['mean_silhouette_score'].mean()),
+                'std_silhouette_score': float(comparison_df['mean_silhouette_score'].std()),
+                'mean_latent_variance': float(comparison_df['latent_variance'].mean()),
+                'correlation_loss_silhouette': float(comparison_df['final_test_loss'].corr(comparison_df['mean_silhouette_score']))
+            }
+        }
+        
+        # Save comparison data
+        comparison_path = os.path.join(output_base_dir, 'latent_analysis_comparison.csv')
+        comparison_df.to_csv(comparison_path, index=False)
+        
+        if verbose:
+            print(f"\n📊 Comparison Analysis:")
+            print(f"   Best Silhouette: {comparison_analysis['best_silhouette_experiment']['experiment_name']} ({comparison_analysis['best_silhouette_experiment']['mean_silhouette_score']:.4f})")
+            print(f"   Mean Silhouette: {comparison_analysis['overall_statistics']['mean_silhouette_score']:.4f}")
+            print(f"   Loss-Silhouette Correlation: {comparison_analysis['overall_statistics']['correlation_loss_silhouette']:.4f}")
+    
+    # Compile final results
+    final_results = {
+        'individual_analyses': analysis_results,
+        'comparison_analysis': comparison_analysis,
+        'analysis_metadata': {
+            'total_experiments_analyzed': len(experiments_to_analyze),
+            'successful_analyses': len([r for r in analysis_results.values() if 'error' not in r]),
+            'failed_analyses': len([r for r in analysis_results.values() if 'error' in r]),
+            'output_base_directory': output_base_dir,
+            'include_interpolations': include_interpolations,
+            'include_traversals': include_traversals
+        }
+    }
+    
+    # Save comprehensive results
+    comprehensive_path = os.path.join(output_base_dir, 'systematic_latent_analysis_summary.json')
+    with open(comprehensive_path, 'w') as f:
+        json.dump(convert_to_json_serializable(final_results), f, indent=2)
+    
+    if verbose:
+        print("=" * 80)
+        print("🎉 Systematic latent space analysis completed!")
+        print(f"   📂 All results saved to: {output_base_dir}")
+        metadata = final_results['analysis_metadata']
+        print(f"   ✅ Successful: {metadata['successful_analyses']}/{metadata['total_experiments_analyzed']}")
+        if metadata['failed_analyses'] > 0:
+            print(f"   ❌ Failed: {metadata['failed_analyses']}")
+    
+    return final_results 

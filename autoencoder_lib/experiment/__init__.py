@@ -16,7 +16,10 @@ from .wrappers import (
 from .experiment_reporting import (
     create_comparison_tables,
     save_experiment_summary,
-    generate_comprehensive_report
+    generate_comprehensive_report,
+    analyze_reconstruction_quality,
+    generate_reconstruction_comparison_report,
+    create_reconstruction_visualization_batch
 )
 
 __all__ = [
@@ -30,5 +33,10 @@ __all__ = [
     # Experiment reporting functions (orchestrate core visualization)
     'create_comparison_tables',
     'save_experiment_summary',
-    'generate_comprehensive_report'
+    'generate_comprehensive_report',
+    
+    # Reconstruction analysis functions
+    'analyze_reconstruction_quality',
+    'generate_reconstruction_comparison_report',
+    'create_reconstruction_visualization_batch'
 ] 

@@ -25,7 +25,10 @@ from ..visualization import (
 from .experiment_reporting import (
     create_comparison_tables,
     save_experiment_summary,
-    generate_comprehensive_report
+    generate_comprehensive_report,
+    analyze_reconstruction_quality,
+    generate_reconstruction_comparison_report,
+    create_reconstruction_visualization_batch
 )
 from ..models import create_autoencoder, MODEL_ARCHITECTURES
 from ..data import generate_dataset
@@ -314,7 +317,7 @@ def run_systematic_experiments(
         print(f"\n✅ All {total_experiments} experiments completed!")
         print("=" * 60)
     
-    # Generate comprehensive visualizations
+    # Generate comprehensive visualization report (matching original notebook output)
     if generate_visualizations:
         if verbose:
             print("\n🎨 Generating comprehensive visualization report...")
@@ -326,24 +329,61 @@ def run_systematic_experiments(
             show_plots=show_plots
         )
         
+        # NEW: Add comprehensive reconstruction analysis
         if verbose:
-            print("\n📊 Additional Analysis:")
-            print("-" * 30)
+            print("\n🔍 Generating reconstruction analysis report...")
+        
+        # Prepare dataset samples for reconstruction analysis
+        dataset_samples = {
+            'test_data': test_data,
+            'test_labels': test_labels,
+            'class_names': class_names
+        }
+        
+        # Generate reconstruction comparison report
+        reconstruction_files = generate_reconstruction_comparison_report(
+            experiment_results=all_results,
+            dataset_samples=dataset_samples,
+            output_dir=output_dir,
+            show_visualizations=show_plots
+        )
+        
+        # Analyze reconstruction quality across all experiments
+        reconstruction_analysis = analyze_reconstruction_quality(
+            experiment_results=all_results,
+            dataset_samples=dataset_samples,
+            show_best_worst=True
+        )
+        
+        # Combine file paths from both reports
+        all_visualization_files = {**visualization_files, **reconstruction_files}
+        
+        if verbose:
+            print(f"\n✅ All visualizations and reconstruction analysis complete!")
+            if all_visualization_files:
+                print("📁 Generated files:")
+                for file_type, file_path in all_visualization_files.items():
+                    print(f"  - {file_type}: {file_path}")
+    
+    # Additional analysis summary (matching original notebook)
+    if verbose:
+        print("\n📊 Additional Analysis:")
+        print("-" * 30)
+        
+        # Print architecture-specific summaries (matching original notebook)
+        for architecture, results in all_results.items():
+            print(f"\n🏗️ {architecture} Results:")
+            print("Latent Dim | Test Loss | Test Silhouette | Train Time")
+            print("-" * 50)
             
-            # Print architecture-specific summaries (matching original notebook)
-            for architecture, results in all_results.items():
-                print(f"\n🏗️ {architecture} Results:")
-                print("Latent Dim | Test Loss | Test Silhouette | Train Time")
-                print("-" * 50)
+            sorted_results = sorted(results, key=lambda x: x['latent_dim'])
+            for result in sorted_results:
+                metrics = result['metrics']
+                test_loss = metrics.get('final_test_loss', 0)
+                test_silh = metrics.get('final_silhouette', 0) 
+                train_time = metrics.get('training_time', 0)
                 
-                sorted_results = sorted(results, key=lambda x: x['latent_dim'])
-                for result in sorted_results:
-                    metrics = result['metrics']
-                    test_loss = metrics.get('final_test_loss', 0)
-                    test_silh = metrics.get('final_silhouette', 0) 
-                    train_time = metrics.get('training_time', 0)
-                    
-                    print(f"{result['latent_dim']:^10} | {test_loss:^9.4f} | {test_silh:^15.4f} | {train_time:^10.2f}s")
+                print(f"{result['latent_dim']:^10} | {test_loss:^9.4f} | {test_silh:^15.4f} | {train_time:^10.2f}s")
     
     # Save complete results to JSON
     results_path = Path(output_dir) / f"systematic_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"

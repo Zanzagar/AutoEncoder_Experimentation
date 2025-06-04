@@ -29,7 +29,8 @@ from .tsne_viz import (
     visualize_raw_data_tsne,
     visualize_latent_tsne,
     compare_tsne_embeddings,
-    interactive_tsne_exploration
+    interactive_tsne_exploration,
+    plot_with_labels
 )
 
 # Training visualization
@@ -43,7 +44,8 @@ from .training_viz import (
     plot_performance_heatmap,
     plot_multiple_performance_heatmaps,
     plot_3d_performance_surface,
-    plot_performance_contour
+    plot_performance_contour,
+    plot_metrics_vs_latent_dim
 )
 
 # Reconstruction visualization
@@ -52,7 +54,8 @@ from .reconstruction_viz import (
     plot_reconstruction_loss_grid,
     compare_reconstruction_quality,
     plot_reconstruction_error_heatmap,
-    animate_training_reconstructions
+    animate_training_reconstructions,
+    visualize_dual_reconstructions
 )
 
 # Latent space visualization
@@ -77,6 +80,7 @@ __all__ = [
     'visualize_latent_tsne',
     'compare_tsne_embeddings',
     'interactive_tsne_exploration',
+    'plot_with_labels',
     
     # Training visualization
     'plot_training_curves',
@@ -89,6 +93,7 @@ __all__ = [
     'plot_multiple_performance_heatmaps',
     'plot_3d_performance_surface',
     'plot_performance_contour',
+    'plot_metrics_vs_latent_dim',
     
     # Reconstruction visualization
     'visualize_reconstructions',
@@ -96,6 +101,7 @@ __all__ = [
     'compare_reconstruction_quality',
     'plot_reconstruction_error_heatmap',
     'animate_training_reconstructions',
+    'visualize_dual_reconstructions',
     
     # Latent space visualization
     'visualize_latent_space_2d',

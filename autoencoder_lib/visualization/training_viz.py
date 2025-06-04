@@ -820,4 +820,85 @@ def plot_performance_contour(data_points: List[Dict],
         return False
     except Exception as e:
         print(f"❌ Error generating contour plot: {e}")
-        return False 
+        return False
+
+
+def plot_metrics_vs_latent_dim(
+    all_results: Dict[str, List[Tuple]],
+    save_path: Optional[str] = None,
+    session_timestamp: Optional[str] = None,
+    random_seed: Optional[int] = None,
+    figure_size: Tuple[int, int] = (16, 12)
+) -> None:
+    """
+    Plot metrics (test/train loss and silhouette scores) versus latent dimension for each architecture.
+    
+    Args:
+        all_results: Dictionary mapping architecture -> list of (model, history) tuples
+        save_path: Path to save the figure (optional)
+        session_timestamp: Session timestamp for title/filename
+        random_seed: Random seed for title
+        figure_size: Size of the figure
+    """
+    # Get list of architectures and create color array
+    architectures = list(all_results.keys())
+    colors = plt.cm.tab10(np.linspace(0, 1, len(architectures)))
+    
+    # Create a 2x2 subplot grid for different metrics
+    fig, axes = plt.subplots(2, 2, figsize=figure_size)
+    
+    # Define the metrics to plot
+    metrics = [
+        ('final_train_loss', 'Train Loss', axes[0, 0], '-'),  # Solid line for train metrics
+        ('final_test_loss', 'Test Loss', axes[0, 1], '--'),   # Dashed line for test metrics
+        ('final_train_silhouette', 'Train Silhouette Score', axes[1, 0], '-'),  # Solid line for train metrics
+        ('final_silhouette', 'Test Silhouette Score', axes[1, 1], '--')   # Dashed line for test metrics
+    ]
+    
+    for i, (architecture, results) in enumerate(all_results.items()):
+        # Sort results by latent dimension
+        sorted_results = sorted(results, key=lambda x: x[1].get('latent_dim', 0))
+        
+        for metric_key, metric_label, ax, linestyle in metrics:
+            latent_dims = []
+            metric_values = []
+            
+            # Use a set to track unique latent dimensions
+            seen_dims = set()
+            
+            for model, history in sorted_results:
+                latent_dim = history.get('latent_dim', 0)
+                if latent_dim not in seen_dims and metric_key in history:
+                    seen_dims.add(latent_dim)
+                    latent_dims.append(latent_dim)
+                    metric_values.append(history.get(metric_key, 0))
+            
+            # Plot with consistent colors and specified linestyle
+            if latent_dims and metric_values:
+                ax.plot(latent_dims, metric_values, 'o-', 
+                        label=architecture, 
+                        color=colors[i],  # Index-based color assignment
+                        linestyle=linestyle)  # Use different linestyles for train vs test
+                
+                ax.set_title(f'{metric_label} vs. Latent Dimension')
+                ax.set_xlabel('Latent Dimension')
+                ax.set_ylabel(metric_label)
+                ax.grid(True, alpha=0.3)
+                ax.set_xscale('log', base=2)  # Log scale for latent dimensions
+                ax.legend()
+    
+    # Add title with session info if provided
+    title = "Metrics Comparison"
+    if session_timestamp and random_seed:
+        title += f" - Run: {session_timestamp} (Seed: {random_seed})"
+    elif session_timestamp:
+        title += f" - Run: {session_timestamp}"
+    
+    plt.suptitle(title, fontsize=14)
+    plt.tight_layout()
+    
+    # Save the figure if path provided
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    
+    plt.show() 

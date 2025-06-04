@@ -384,4 +384,188 @@ def animate_training_reconstructions(
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
     
+    plt.show()
+
+
+def visualize_dual_reconstructions(
+    model,
+    train_data: Union[torch.Tensor, np.ndarray],
+    train_labels: Optional[Union[torch.Tensor, np.ndarray]] = None,
+    test_data: Optional[Union[torch.Tensor, np.ndarray]] = None,
+    test_labels: Optional[Union[torch.Tensor, np.ndarray]] = None,
+    class_names: Optional[List[str]] = None,
+    n_samples: int = 5,
+    device: str = 'cpu',
+    view_indices: Optional[List[int]] = None,
+    figure_size: Optional[Tuple[int, int]] = None
+) -> None:
+    """
+    Visualize reconstructions from both training and test data side by side.
+    
+    Args:
+        model: Trained autoencoder model
+        train_data: Training data tensor
+        train_labels: Training labels (optional)
+        test_data: Test data tensor (optional, uses train_data if None)
+        test_labels: Test labels (optional)
+        class_names: List of class names for labels
+        n_samples: Number of samples to show from each dataset
+        device: Device to run model on
+        view_indices: Specific indices to view (if None, uses first n_samples)
+        figure_size: Size of figure (auto-calculated if None)
+    """
+    import torch
+    
+    model.eval()
+    
+    # Convert to tensors if needed
+    if isinstance(train_data, np.ndarray):
+        train_data = torch.FloatTensor(train_data)
+    if test_data is None:
+        test_data = train_data
+    elif isinstance(test_data, np.ndarray):
+        test_data = torch.FloatTensor(test_data)
+    
+    # Process view indices or use defaults
+    if view_indices is not None:
+        train_view_indices = view_indices[:len(view_indices)//2]
+        test_view_indices = view_indices[len(view_indices)//2:]
+        
+        train_view_data = train_data[train_view_indices].to(device)
+        train_view_labels = train_labels[train_view_indices] if train_labels is not None else None
+        
+        test_view_data = test_data[test_view_indices].to(device)
+        test_view_labels = test_labels[test_view_indices] if test_labels is not None else None
+    else:
+        # Use first n_samples from each dataset
+        n_train = min(n_samples, len(train_data))
+        n_test = min(n_samples, len(test_data))
+        
+        train_view_data = train_data[:n_train].to(device)
+        train_view_labels = train_labels[:n_train] if train_labels is not None else None
+        
+        test_view_data = test_data[:n_test].to(device)
+        test_view_labels = test_labels[:n_test] if test_labels is not None else None
+    
+    # Generate reconstructions
+    with torch.no_grad():
+        # Handle different model architectures
+        try:
+            # Try standard autoencoder interface
+            _, train_decoded = model(train_view_data)
+            _, test_decoded = model(test_view_data)
+        except:
+            # Try direct decode method
+            train_decoded = model.decode(model.encode(train_view_data))
+            test_decoded = model.decode(model.encode(test_view_data))
+    
+    # Create figure with 4 rows: train original, train reconstructed, test original, test reconstructed
+    n_train_images = len(train_view_data)
+    n_test_images = len(test_view_data)
+    max_images = max(n_train_images, n_test_images)
+    
+    # Create appropriate figure size
+    if figure_size is None:
+        fig_width = max_images * 2
+        figure_size = (fig_width, 8)
+    
+    fig, axes = plt.subplots(4, max_images, figsize=figure_size)
+    if max_images == 1:
+        axes = axes.reshape(4, 1)
+    plt.subplots_adjust(wspace=0.1, hspace=0.3)
+    
+    # Add a title to the figure
+    plt.suptitle('Train (top) vs. Test (bottom) Reconstructions', fontsize=14)
+    
+    # Train original images (row 0)
+    for i in range(max_images):
+        if i < n_train_images:
+            # Handle different image formats
+            img = train_view_data[i]
+            if len(img.shape) == 3 and img.shape[0] == 1:
+                img = img.squeeze(0)
+            elif len(img.shape) == 3:
+                img = img.permute(1, 2, 0)
+            
+            axes[0][i].imshow(img.cpu().numpy(), cmap='gray')
+            
+            # If available, add class labels as text below images
+            if class_names is not None and train_view_labels is not None:
+                class_idx = train_view_labels[i].item()
+                class_text = class_names[class_idx] if class_idx < len(class_names) else f"Class {class_idx}"
+                axes[0][i].text(img.shape[1]//2, img.shape[0] + 5, class_text, fontsize=8, ha="center")
+        else:
+            axes[0][i].axis('off')
+        
+        axes[0][i].set_xticks([])
+        axes[0][i].set_yticks([])
+        
+        if i == 0:
+            axes[0][i].set_ylabel("Train Original", fontsize=10)
+    
+    # Train reconstructed images (row 1)
+    for i in range(max_images):
+        if i < n_train_images:
+            img = train_decoded[i]
+            if len(img.shape) == 3 and img.shape[0] == 1:
+                img = img.squeeze(0)
+            elif len(img.shape) == 3:
+                img = img.permute(1, 2, 0)
+            
+            axes[1][i].imshow(img.cpu().numpy(), cmap='gray')
+        else:
+            axes[1][i].axis('off')
+        
+        axes[1][i].set_xticks([])
+        axes[1][i].set_yticks([])
+        
+        if i == 0:
+            axes[1][i].set_ylabel("Train Recon", fontsize=10)
+    
+    # Test original images (row 2)
+    for i in range(max_images):
+        if i < n_test_images:
+            img = test_view_data[i]
+            if len(img.shape) == 3 and img.shape[0] == 1:
+                img = img.squeeze(0)
+            elif len(img.shape) == 3:
+                img = img.permute(1, 2, 0)
+            
+            axes[2][i].imshow(img.cpu().numpy(), cmap='gray')
+            
+            # If available, add class labels as text below images
+            if class_names is not None and test_view_labels is not None:
+                class_idx = test_view_labels[i].item()
+                class_text = class_names[class_idx] if class_idx < len(class_names) else f"Class {class_idx}"
+                axes[2][i].text(img.shape[1]//2, img.shape[0] + 5, class_text, fontsize=8, ha="center")
+        else:
+            axes[2][i].axis('off')
+        
+        axes[2][i].set_xticks([])
+        axes[2][i].set_yticks([])
+        
+        if i == 0:
+            axes[2][i].set_ylabel("Test Original", fontsize=10)
+    
+    # Test reconstructed images (row 3)
+    for i in range(max_images):
+        if i < n_test_images:
+            img = test_decoded[i]
+            if len(img.shape) == 3 and img.shape[0] == 1:
+                img = img.squeeze(0)
+            elif len(img.shape) == 3:
+                img = img.permute(1, 2, 0)
+            
+            axes[3][i].imshow(img.cpu().numpy(), cmap='gray')
+        else:
+            axes[3][i].axis('off')
+        
+        axes[3][i].set_xticks([])
+        axes[3][i].set_yticks([])
+        
+        if i == 0:
+            axes[3][i].set_ylabel("Test Recon", fontsize=10)
+    
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.9)  # Make space for the suptitle
     plt.show() 

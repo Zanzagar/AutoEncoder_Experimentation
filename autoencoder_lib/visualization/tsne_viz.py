@@ -386,4 +386,52 @@ def interactive_tsne_exploration(
     
     plt.suptitle("t-SNE Exploration with Different Perplexity Values", fontsize=16)
     plt.tight_layout()
-    plt.show() 
+    plt.show()
+
+
+def plot_with_labels(
+    low_dim_embs: np.ndarray, 
+    labels: np.ndarray, 
+    class_names: Optional[List[str]] = None, 
+    title: str = "t-SNE Visualization", 
+    ax: Optional[plt.Axes] = None
+) -> plt.Axes:
+    """
+    Plot t-SNE data with color-coded labels on a given axis.
+    
+    Args:
+        low_dim_embs: Low-dimensional embeddings from t-SNE (N, 2)
+        labels: Class labels for each point (N,)
+        class_names: List of class names for the legend
+        title: Plot title
+        ax: Matplotlib axis to plot on (if None, creates a new figure)
+        
+    Returns:
+        The matplotlib axis used for plotting
+    """
+    if ax is None:
+        plt.figure(figsize=(10, 8))
+        ax = plt.gca()
+        
+    unique_labels = np.unique(labels)
+    # Use rainbow colormap for consistent visualization
+    colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_labels)))
+    
+    for i, label in enumerate(unique_labels):
+        mask = labels == label
+        ax.scatter(
+            low_dim_embs[mask, 0], 
+            low_dim_embs[mask, 1],
+            c=[colors[i]],
+            label=class_names[label] if class_names is not None else f'Class {label}',
+            alpha=0.7,
+            s=50,
+            edgecolors='none'
+        )
+    
+    ax.legend()
+    ax.set_title(title, fontsize=14)
+    ax.grid(alpha=0.3)
+    ax.set_xlabel('t-SNE Component 1')
+    ax.set_ylabel('t-SNE Component 2')
+    return ax 

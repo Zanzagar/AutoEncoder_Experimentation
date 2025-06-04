@@ -30,7 +30,8 @@ from .tsne_viz import (
     visualize_latent_tsne,
     compare_tsne_embeddings,
     interactive_tsne_exploration,
-    plot_with_labels
+    plot_with_labels,
+    visualize_side_by_side_latent_spaces
 )
 
 # Training visualization
@@ -45,7 +46,9 @@ from .training_viz import (
     plot_multiple_performance_heatmaps,
     plot_3d_performance_surface,
     plot_performance_contour,
-    plot_metrics_vs_latent_dim
+    plot_metrics_vs_latent_dim,
+    plot_training_metrics,
+    plot_latent_dim_comparison
 )
 
 # Reconstruction visualization
@@ -81,6 +84,7 @@ __all__ = [
     'compare_tsne_embeddings',
     'interactive_tsne_exploration',
     'plot_with_labels',
+    'visualize_side_by_side_latent_spaces',
     
     # Training visualization
     'plot_training_curves',
@@ -94,6 +98,8 @@ __all__ = [
     'plot_3d_performance_surface',
     'plot_performance_contour',
     'plot_metrics_vs_latent_dim',
+    'plot_training_metrics',
+    'plot_latent_dim_comparison',
     
     # Reconstruction visualization
     'visualize_reconstructions',

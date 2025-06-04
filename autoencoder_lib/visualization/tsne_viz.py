@@ -434,4 +434,178 @@ def plot_with_labels(
     ax.grid(alpha=0.3)
     ax.set_xlabel('t-SNE Component 1')
     ax.set_ylabel('t-SNE Component 2')
-    return ax 
+    return ax
+
+
+def visualize_side_by_side_latent_spaces(
+    model,
+    train_data: Union[torch.Tensor, np.ndarray],
+    train_labels: Union[torch.Tensor, np.ndarray],
+    test_data: Union[torch.Tensor, np.ndarray],
+    test_labels: Union[torch.Tensor, np.ndarray],
+    class_names: Optional[List[str]] = None,
+    title_suffix: str = "",
+    orig_silhouette: Optional[float] = None,
+    max_samples: int = 500,
+    device: str = 'cpu',
+    figure_size: Tuple[int, int] = (20, 8)
+) -> Tuple[Optional[float], Optional[float]]:
+    """
+    Compute and visualize t-SNE projections of train and test data side by side.
+    
+    Args:
+        model: Trained autoencoder model
+        train_data: Training data tensor
+        train_labels: Training labels tensor
+        test_data: Test data tensor
+        test_labels: Test labels tensor
+        class_names: List of class names for visualization
+        title_suffix: Additional text for plot title
+        orig_silhouette: Original silhouette score from training
+        max_samples: Maximum samples to use for t-SNE (for performance)
+        device: Device to run model on
+        figure_size: Size of the figure
+        
+    Returns:
+        Tuple of (train_silhouette, test_silhouette) scores
+    """
+    import torch
+    from sklearn.metrics import silhouette_score
+    
+    model.eval()
+    
+    # Convert to tensors if needed
+    if isinstance(train_data, np.ndarray):
+        train_data = torch.FloatTensor(train_data)
+    if isinstance(test_data, np.ndarray):
+        test_data = torch.FloatTensor(test_data)
+    if isinstance(train_labels, torch.Tensor):
+        train_labels = train_labels.detach().cpu().numpy()
+    if isinstance(test_labels, torch.Tensor):
+        test_labels = test_labels.detach().cpu().numpy()
+    
+    with torch.no_grad():
+        # Process train data
+        train_data_device = train_data.to(device)
+        try:
+            encoded_train, _ = model(train_data_device)
+        except:
+            # Try alternative interface
+            encoded_train = model.encode(train_data_device)
+        
+        encoded_train = encoded_train.view(encoded_train.size(0), -1).detach().cpu().numpy()
+        
+        # Process test data
+        test_data_device = test_data.to(device)
+        try:
+            encoded_test, _ = model(test_data_device)
+        except:
+            # Try alternative interface
+            encoded_test = model.encode(test_data_device)
+        
+        encoded_test = encoded_test.view(encoded_test.size(0), -1).detach().cpu().numpy()
+        
+        # Restrict to max samples for performance
+        train_plot_only = min(max_samples, encoded_train.shape[0])
+        test_plot_only = min(max_samples, encoded_test.shape[0])
+        
+        print(f"Running t-SNE on {train_plot_only} train samples and {test_plot_only} test samples...")
+        
+        # Apply t-SNE with consistent parameters
+        # Train data t-SNE
+        train_tsne = TSNE(perplexity=min(30, len(encoded_train[:train_plot_only])-1), 
+                         n_components=2, init='pca', max_iter=5000, random_state=42)
+        train_low_dim_embs = train_tsne.fit_transform(encoded_train[:train_plot_only])
+        train_plot_labels = train_labels[:train_plot_only]
+        
+        # Test data t-SNE
+        test_tsne = TSNE(perplexity=min(30, len(encoded_test[:test_plot_only])-1), 
+                        n_components=2, init='pca', max_iter=5000, random_state=42)
+        test_low_dim_embs = test_tsne.fit_transform(encoded_test[:test_plot_only])
+        test_plot_labels = test_labels[:test_plot_only]
+        
+        # Calculate silhouette scores
+        train_silhouette = None
+        if len(np.unique(train_plot_labels)) > 1:
+            try:
+                train_silhouette = silhouette_score(train_low_dim_embs, train_plot_labels)
+                print(f"Train data silhouette score: {train_silhouette:.6f}")
+            except Exception as e:
+                print(f"Could not calculate train silhouette score: {e}")
+        
+        test_silhouette = None
+        if len(np.unique(test_plot_labels)) > 1:
+            try:
+                test_silhouette = silhouette_score(test_low_dim_embs, test_plot_labels)
+                print(f"Test data silhouette score: {test_silhouette:.6f}")
+                
+                # Check if it matches original silhouette
+                if orig_silhouette is not None:
+                    similarity = 100 - abs(test_silhouette - orig_silhouette) * 100
+                    print(f"Similarity to original score: {similarity:.2f}%")
+            except Exception as e:
+                print(f"Could not calculate test silhouette score: {e}")
+        
+        # Create side-by-side plots
+        fig, axes = plt.subplots(1, 2, figsize=figure_size)
+        
+        # Plot train data
+        unique_train_labels = np.unique(train_plot_labels)
+        train_colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_train_labels)))
+        
+        for i, label in enumerate(unique_train_labels):
+            mask = train_plot_labels == label
+            axes[0].scatter(
+                train_low_dim_embs[mask, 0], 
+                train_low_dim_embs[mask, 1],
+                c=[train_colors[i]],
+                label=class_names[label] if class_names is not None else f"Class {label}",
+                alpha=0.7,
+                s=50,
+                edgecolors='none'
+            )
+        
+        train_title = f"Train Data Latent Space ({len(train_data)} images)"
+        if train_silhouette is not None:
+            train_title += f"\nSilhouette Score: {train_silhouette:.3f}"
+        axes[0].set_title(train_title, fontsize=14)
+        axes[0].legend()
+        axes[0].grid(alpha=0.3)
+        axes[0].set_xlabel('t-SNE Component 1')
+        axes[0].set_ylabel('t-SNE Component 2')
+        
+        # Plot test data
+        unique_test_labels = np.unique(test_plot_labels)
+        test_colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_test_labels)))
+        
+        for i, label in enumerate(unique_test_labels):
+            mask = test_plot_labels == label
+            axes[1].scatter(
+                test_low_dim_embs[mask, 0], 
+                test_low_dim_embs[mask, 1],
+                c=[test_colors[i]],
+                label=class_names[label] if class_names is not None else f"Class {label}",
+                alpha=0.7,
+                s=50,
+                edgecolors='none'
+            )
+        
+        test_title = f"Test Data Latent Space ({len(test_data)} images)"
+        if test_silhouette is not None:
+            test_title += f"\nSilhouette Score: {test_silhouette:.3f}"
+        if orig_silhouette is not None:
+            test_title += f" (Original: {orig_silhouette:.3f})"
+        axes[1].set_title(test_title, fontsize=14)
+        axes[1].legend()
+        axes[1].grid(alpha=0.3)
+        axes[1].set_xlabel('t-SNE Component 1')
+        axes[1].set_ylabel('t-SNE Component 2')
+        
+        # Add overall title
+        if title_suffix:
+            fig.suptitle(title_suffix, fontsize=16)
+        
+        plt.tight_layout()
+        plt.show()
+        
+        return train_silhouette, test_silhouette 

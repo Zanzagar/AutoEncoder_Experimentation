@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import Dict, List, Tuple, Optional, Union
 import pandas as pd
+import os
 
 
 def plot_training_curves(
@@ -900,5 +901,266 @@ def plot_metrics_vs_latent_dim(
     # Save the figure if path provided
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    
+    plt.show()
+
+
+def plot_training_metrics(
+    data: Union[Dict[str, List], List[Dict]],
+    metrics: List[str] = ['train_loss', 'test_loss'],
+    architecture_filter: Optional[str] = None,
+    save_path: Optional[str] = None,
+    session_timestamp: Optional[str] = None,
+    figure_size: Tuple[int, int] = (12, 7)
+) -> None:
+    """
+    Plot training metrics for architectures and latent dimensions.
+    
+    Supports two input formats:
+    1. Dict[str, List[Tuple]] - architecture -> list of (model, history) tuples
+    2. List[Dict] - list of history dictionaries
+    
+    Args:
+        data: Results data in either format
+        metrics: List of metrics to plot
+        architecture_filter: If provided, only plot this architecture
+        save_path: Directory to save plots (optional)
+        session_timestamp: Session timestamp for filenames
+        figure_size: Size of each plot
+    """
+    
+    # Normalize input to architecture -> histories format
+    if isinstance(data, dict):
+        # Format 1: Dict[str, List[Tuple]] from experiment results
+        architectures = {}
+        for arch, results in data.items():
+            if architecture_filter and arch != architecture_filter:
+                continue
+            architectures[arch] = [history for model, history in results]
+    else:
+        # Format 2: List[Dict] from loaded histories
+        architectures = {}
+        for history in data:
+            arch = history.get('architecture', 'unknown')
+            if architecture_filter and arch != architecture_filter:
+                continue
+            if arch not in architectures:
+                architectures[arch] = []
+            architectures[arch].append(history)
+    
+    if not architectures:
+        print(f"No data to plot for architecture filter: {architecture_filter}")
+        return
+    
+    # Process each architecture
+    for architecture, arch_histories in architectures.items():
+        if not arch_histories:
+            print(f"No results to plot for {architecture}")
+            continue
+            
+        print(f"Plotting training metrics for {architecture} architecture...")
+        
+        # Sort by latent dimension within each architecture
+        arch_histories.sort(key=lambda x: x.get('latent_dim', 0))
+        
+        # Create color map for latent dimensions
+        latent_dims = [h.get('latent_dim', 0) for h in arch_histories]
+        unique_dims = sorted(set(latent_dims))
+        
+        if len(unique_dims) > 1:
+            color_indices = [np.log2(dim)/np.log2(max(unique_dims)) for dim in unique_dims]
+            color_map = plt.cm.viridis
+            dim_colors = {dim: color_map(idx) for dim, idx in zip(unique_dims, color_indices)}
+        else:
+            dim_colors = {unique_dims[0]: 'blue'}
+        
+        # Plot each metric
+        for metric in metrics:
+            plt.figure(figsize=figure_size)
+            
+            plotted_any = False
+            for history in arch_histories:
+                latent_dim = history.get('latent_dim', 'Unknown')
+                
+                if metric in history and len(history[metric]) > 0:
+                    steps = range(1, len(history[metric]) + 1)
+                    plt.plot(
+                        steps, 
+                        history[metric], 
+                        label=f"dim={latent_dim}",
+                        linewidth=2,
+                        color=dim_colors.get(latent_dim, 'blue')
+                    )
+                    plotted_any = True
+            
+            if not plotted_any:
+                plt.close()
+                continue
+            
+            plt.title(f"{architecture}: {metric.replace('_', ' ').title()} vs. Training Steps")
+            plt.xlabel("Training Steps")
+            plt.ylabel(metric.replace('_', ' ').title())
+            
+            # Sort legend by latent dimension
+            handles, labels = plt.gca().get_legend_handles_labels()
+            if labels:
+                try:
+                    dim_values = [int(label.split('=')[1]) for label in labels]
+                    sorted_indices = np.argsort(dim_values)
+                    plt.legend([handles[i] for i in sorted_indices], [labels[i] for i in sorted_indices])
+                except (ValueError, IndexError):
+                    plt.legend()
+            
+            plt.grid(alpha=0.3)
+            
+            # Visual enhancements
+            plt.gca().spines['top'].set_visible(False)
+            plt.gca().spines['right'].set_visible(False)
+            
+            plt.tight_layout()
+            
+            # Save if requested
+            if save_path and session_timestamp:
+                filename = f"{architecture}_{metric}_{session_timestamp}.png"
+                plt.savefig(os.path.join(save_path, filename), dpi=300, bbox_inches='tight')
+            
+            plt.show()
+        
+        # Plot silhouette scores if available
+        if any('silhouette_scores' in h for h in arch_histories):
+            plt.figure(figsize=figure_size)
+            
+            plotted_any = False
+            for history in arch_histories:
+                latent_dim = history.get('latent_dim', 'Unknown')
+                
+                if 'silhouette_scores' in history and len(history['silhouette_scores']) > 0:
+                    steps = range(1, len(history['silhouette_scores']) + 1)
+                    plt.plot(
+                        steps, 
+                        history['silhouette_scores'], 
+                        label=f"dim={latent_dim}",
+                        linewidth=2,
+                        color=dim_colors.get(latent_dim, 'blue')
+                    )
+                    plotted_any = True
+            
+            if plotted_any:
+                plt.title(f"{architecture}: Silhouette Score vs. Training Steps")
+                plt.xlabel("Training Steps")
+                plt.ylabel("Silhouette Score")
+                
+                # Sort legend by latent dimension
+                handles, labels = plt.gca().get_legend_handles_labels()
+                if labels:
+                    try:
+                        dim_values = [int(label.split('=')[1]) for label in labels]
+                        sorted_indices = np.argsort(dim_values)
+                        plt.legend([handles[i] for i in sorted_indices], [labels[i] for i in sorted_indices])
+                    except (ValueError, IndexError):
+                        plt.legend()
+                
+                plt.grid(alpha=0.3)
+                
+                # Visual enhancements
+                plt.gca().spines['top'].set_visible(False)
+                plt.gca().spines['right'].set_visible(False)
+                
+                plt.tight_layout()
+                
+                # Save if requested
+                if save_path and session_timestamp:
+                    filename = f"{architecture}_silhouette_scores_{session_timestamp}.png"
+                    plt.savefig(os.path.join(save_path, filename), dpi=300, bbox_inches='tight')
+                
+                plt.show()
+            else:
+                plt.close()
+
+
+def plot_latent_dim_comparison(
+    all_results: Dict[str, List[Tuple]],
+    save_path: Optional[str] = None,
+    session_timestamp: Optional[str] = None,
+    random_seed: Optional[int] = None,
+    figure_size: Tuple[int, int] = (12, 8)
+) -> None:
+    """
+    Create plots comparing the effect of latent dimension on each architecture.
+    
+    Args:
+        all_results: Dictionary mapping architecture -> list of (model, history) tuples
+        save_path: Path to save the figure (optional)
+        session_timestamp: Session timestamp for title/filename
+        random_seed: Random seed for title
+        figure_size: Size of the figure
+    """
+    # Get list of architectures and create colors
+    architectures = list(all_results.keys())
+    colors = plt.cm.tab10(np.linspace(0, 1, len(architectures)))
+    
+    # Create 2x2 subplot layout
+    fig, axes = plt.subplots(2, 2, figsize=figure_size)
+    axes = axes.flatten()
+    
+    metrics = ['Final Train Loss', 'Final Test Loss', 'Best Train Loss', 'Best Test Loss']
+    
+    for i, metric in enumerate(metrics):
+        ax = axes[i]
+        
+        for j, (architecture, results) in enumerate(all_results.items()):
+            latent_dims = []
+            values = []
+            
+            for model, history in results:
+                latent_dim = history.get('latent_dim', 0)
+                
+                if 'final' in metric.lower():
+                    if 'train' in metric.lower() and 'train_loss' in history:
+                        value = history['train_loss'][-1] if history['train_loss'] else np.nan
+                    elif 'test' in metric.lower() and 'test_loss' in history:
+                        value = history['test_loss'][-1] if history['test_loss'] else np.nan
+                    else:
+                        continue
+                else:  # 'best' in metric
+                    if 'train' in metric.lower() and 'train_loss' in history:
+                        value = min(history['train_loss']) if history['train_loss'] else np.nan
+                    elif 'test' in metric.lower() and 'test_loss' in history:
+                        value = min(history['test_loss']) if history['test_loss'] else np.nan
+                    else:
+                        continue
+                
+                latent_dims.append(latent_dim)
+                values.append(value)
+            
+            if latent_dims and values:
+                # Sort by latent dimension
+                sorted_pairs = sorted(zip(latent_dims, values))
+                latent_dims, values = zip(*sorted_pairs)
+                
+                ax.plot(latent_dims, values, 'o-', 
+                       label=architecture, color=colors[j], 
+                       linewidth=2, markersize=8)
+        
+        ax.set_title(metric)
+        ax.set_xlabel('Latent Dimension')
+        ax.set_ylabel('Loss Value')
+        ax.grid(alpha=0.3)
+        ax.legend()
+    
+    # Add overall title
+    title = "Latent Dimension Comparison Across Architectures"
+    if session_timestamp:
+        title += f" ({session_timestamp})"
+    if random_seed is not None:
+        title += f" [Seed: {random_seed}]"
+    
+    fig.suptitle(title, fontsize=16)
+    plt.tight_layout()
+    
+    # Save if requested
+    if save_path and session_timestamp:
+        filename = f"latent_dim_comparison_{session_timestamp}.png"
+        plt.savefig(os.path.join(save_path, filename), dpi=300, bbox_inches='tight')
     
     plt.show() 

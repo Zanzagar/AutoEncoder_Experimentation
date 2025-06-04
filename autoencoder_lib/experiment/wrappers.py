@@ -1030,3 +1030,214 @@ def run_systematic_latent_analysis(
             print(f"   ❌ Failed: {metadata['failed_analyses']}")
     
     return final_results 
+
+def run_optuna_experiment_optimization(
+    experiment_config: Dict[str, Any],
+    optimization_config: Dict[str, Any],
+    n_trials: int = 100,
+    output_dir: str = "optuna_experiment_optimization",
+    device: Optional[str] = None,
+    random_seed: int = 42,
+    verbose: bool = True
+) -> Dict[str, Any]:
+    """
+    Run Optuna hyperparameter optimization integrated with the experiment framework.
+    
+    This function provides a high-level interface for running Optuna optimization
+    using the existing experiment infrastructure and dataset configurations.
+    
+    Args:
+        experiment_config: Configuration for experiment parameters
+        optimization_config: Configuration for optimization settings
+        n_trials: Number of optimization trials to run
+        output_dir: Directory to save optimization results
+        device: PyTorch device for training
+        random_seed: Random seed for reproducibility
+        verbose: Whether to show detailed progress
+        
+    Returns:
+        Dictionary containing optimization results and analysis
+    """
+    from .optuna_optimization import run_optuna_optimization
+    
+    if verbose:
+        print("🎯 Starting Optuna Experiment Optimization")
+        print("=" * 70)
+        print(f"   Trials: {n_trials}")
+        print(f"   Output: {output_dir}")
+        print(f"   Device: {device}")
+    
+    # Extract dataset configuration from experiment config
+    dataset_config = experiment_config.get('dataset_config', {})
+    
+    # Run Optuna optimization
+    optimization_results = run_optuna_optimization(
+        dataset_config=dataset_config,
+        optimization_config=optimization_config,
+        n_trials=n_trials,
+        output_dir=output_dir,
+        random_seed=random_seed,
+        verbose=verbose
+    )
+    
+    # Add experiment metadata
+    optimization_results['experiment_metadata'] = {
+        'experiment_config': experiment_config,
+        'optimization_integration': 'autoencoder_lib.experiment.wrappers',
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    if verbose:
+        print("=" * 70)
+        print("✅ Optuna experiment optimization complete!")
+    
+    return optimization_results
+
+
+def run_multi_metric_optuna_optimization(
+    experiment_config: Dict[str, Any],
+    metrics_to_optimize: List[str],
+    n_trials_per_metric: int = 50,
+    output_dir: str = "multi_metric_optuna_optimization",
+    device: Optional[str] = None,
+    random_seed: int = 42,
+    verbose: bool = True
+) -> Dict[str, Any]:
+    """
+    Run Optuna optimization for multiple metrics separately and compare results.
+    
+    This function optimizes different metrics (e.g., test_loss, silhouette_score)
+    separately and provides comparative analysis of the optimization outcomes.
+    
+    Args:
+        experiment_config: Configuration for experiment parameters
+        metrics_to_optimize: List of metric names to optimize
+        n_trials_per_metric: Number of trials for each metric optimization
+        output_dir: Directory to save optimization results
+        device: PyTorch device for training
+        random_seed: Random seed for reproducibility
+        verbose: Whether to show detailed progress
+        
+    Returns:
+        Dictionary containing results from all metric optimizations
+    """
+    from .optuna_optimization import run_optuna_systematic_optimization
+    
+    if verbose:
+        print("🎯 Starting Multi-Metric Optuna Optimization")
+        print("=" * 80)
+        print(f"   Metrics: {metrics_to_optimize}")
+        print(f"   Trials per metric: {n_trials_per_metric}")
+        print(f"   Total trials: {len(metrics_to_optimize) * n_trials_per_metric}")
+    
+    # Create optimization configurations for each metric
+    optimization_configs = []
+    for metric in metrics_to_optimize:
+        # Determine if we should minimize or maximize this metric
+        minimize_metric = metric.endswith('_loss') or metric.endswith('_error')
+        
+        config = {
+            'name': f'optimize_{metric}',
+            'metric': metric,
+            'minimize': minimize_metric,
+            'architectures': experiment_config.get('architectures', ['simple_linear', 'deeper_linear']),
+            'fixed_params': {
+                'epochs': experiment_config.get('epochs', 50),
+                'save_visualizations': False,  # Skip visualizations for optimization trials
+                'save_model': False
+            }
+        }
+        optimization_configs.append(config)
+    
+    # Extract dataset configuration
+    dataset_config = experiment_config.get('dataset_config', {})
+    
+    # Run systematic optimization
+    optimization_results = run_optuna_systematic_optimization(
+        dataset_config=dataset_config,
+        optimization_configs=optimization_configs,
+        n_trials_per_config=n_trials_per_metric,
+        output_dir=output_dir,
+        verbose=verbose
+    )
+    
+    # Add experiment metadata
+    optimization_results['experiment_metadata'] = {
+        'experiment_config': experiment_config,
+        'metrics_optimized': metrics_to_optimize,
+        'optimization_integration': 'autoencoder_lib.experiment.wrappers',
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    if verbose:
+        print("=" * 80)
+        print("✅ Multi-metric Optuna optimization complete!")
+        
+        # Show summary of best results for each metric
+        if 'comparative_analysis' in optimization_results:
+            best_config = optimization_results['comparative_analysis'].get('best_configuration', {})
+            print(f"   🏆 Overall best configuration: {best_config.get('name', 'N/A')}")
+            print(f"   📊 Best value: {best_config.get('best_value', 'N/A')}")
+    
+    return optimization_results
+
+
+def create_optuna_configuration_from_experiment(
+    experiment_config: Dict[str, Any],
+    optimization_metric: str = 'final_test_loss',
+    architectures: Optional[List[str]] = None,
+    additional_fixed_params: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Create an Optuna optimization configuration from an experiment configuration.
+    
+    This helper function translates experiment configurations into Optuna-compatible
+    optimization configurations, making it easier to integrate optimization with
+    existing experimental setups.
+    
+    Args:
+        experiment_config: Base experiment configuration
+        optimization_metric: Metric to optimize
+        architectures: Architectures to include in optimization search space
+        additional_fixed_params: Additional parameters to fix during optimization
+        
+    Returns:
+        Dictionary containing Optuna optimization configuration
+    """
+    # Default architectures from available models
+    if architectures is None:
+        architectures = ['simple_linear', 'deeper_linear', 'convolutional', 'deeper_convolutional']
+    
+    # Determine optimization direction
+    minimize_metric = (
+        optimization_metric.endswith('_loss') or 
+        optimization_metric.endswith('_error') or
+        optimization_metric in ['reconstruction_loss', 'total_loss']
+    )
+    
+    # Fixed parameters from experiment config
+    fixed_params = {
+        'epochs': experiment_config.get('epochs', 50),
+        'save_visualizations': False,  # Skip visualizations during optimization
+        'save_model': False,  # Don't save models for every trial
+        'verbose': False  # Reduce verbosity for trials
+    }
+    
+    # Add additional fixed parameters
+    if additional_fixed_params:
+        fixed_params.update(additional_fixed_params)
+    
+    # Create optimization configuration
+    optimization_config = {
+        'metric': optimization_metric,
+        'minimize': minimize_metric,
+        'architectures': architectures,
+        'fixed_params': fixed_params,
+        'search_space': {
+            'learning_rate_range': (1e-5, 1e-2),
+            'latent_dims': [2, 4, 8, 16, 32, 64],
+            'batch_sizes': [16, 32, 64, 128]
+        }
+    }
+    
+    return optimization_config 

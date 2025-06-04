@@ -18,7 +18,8 @@ from datetime import datetime
 
 # Import core visualization functions
 from ..visualization.training_viz import (
-    plot_latent_dimension_analysis
+    plot_latent_dimension_analysis,
+    plot_metrics_vs_latent_dim
 )
 from ..visualization.reconstruction_viz import visualize_reconstructions as plot_reconstruction_comparison
 
@@ -161,11 +162,30 @@ def generate_comprehensive_report(systematic_results: Dict[str, List[Dict[str, A
                 metrics_dict=metrics_dict
             )
     
-    # 2. Create comparison tables
+    # 2. Create new metric vs latent dimension plots (Train/Test Loss and Train/Test Silhouette)
+    print("📊 Creating metrics vs latent dimension plots...")
+    # Convert systematic_results to the format expected by plot_metrics_vs_latent_dim
+    all_results_for_metrics = {}
+    for architecture, results in systematic_results.items():
+        all_results_for_metrics[architecture] = []
+        for result in results:
+            # Create dummy model object and use history directly
+            model_placeholder = None
+            history = result  # The result dict contains all the metrics we need
+            all_results_for_metrics[architecture].append((model_placeholder, history))
+    
+    # Generate the metrics vs latent dimension plot
+    plot_metrics_vs_latent_dim(
+        all_results=all_results_for_metrics,
+        save_path=output_dir,
+        session_timestamp=datetime.now().strftime("%Y%m%d_%H%M%S")
+    )
+    
+    # 3. Create comparison tables
     print("📋 Creating comparison tables...")
     df = create_comparison_tables(systematic_results)
     
-    # 3. Save experiment summary
+    # 4. Save experiment summary
     print("💾 Saving experiment summary...")
     csv_path = save_experiment_summary(systematic_results, save_dir=output_dir)
     generated_files['summary_csv'] = csv_path

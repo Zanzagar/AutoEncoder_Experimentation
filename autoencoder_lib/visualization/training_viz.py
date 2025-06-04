@@ -867,6 +867,7 @@ def plot_metrics_vs_latent_dim(
 ) -> None:
     """
     Plot metrics (test/train loss and silhouette scores) versus latent dimension for each architecture.
+    Creates a 2x2 subplot layout with Train Loss, Test Loss, Train Silhouette, and Test Silhouette.
     
     Args:
         all_results: Dictionary mapping architecture -> list of (model, history) tuples
@@ -875,26 +876,26 @@ def plot_metrics_vs_latent_dim(
         random_seed: Random seed for title
         figure_size: Size of the figure
     """
-    # Get list of architectures and create color array
+    # Get list of architectures and create colors using rainbow colormap to match AutoEncoderJupyterTest.ipynb
     architectures = list(all_results.keys())
-    colors = plt.cm.tab10(np.linspace(0, 1, len(architectures)))
+    colors = plt.cm.rainbow(np.linspace(0, 1, len(architectures)))
     
-    # Create a 2x2 subplot grid for different metrics
+    # Create a 2x2 subplot grid for the four metrics
     fig, axes = plt.subplots(2, 2, figsize=figure_size)
     
-    # Define the metrics to plot
+    # Define the metrics to plot - Train/Test Loss and Train/Test Silhouette
     metrics = [
-        ('final_train_loss', 'Train Loss', axes[0, 0], '-'),  # Solid line for train metrics
-        ('final_test_loss', 'Test Loss', axes[0, 1], '--'),   # Dashed line for test metrics
-        ('final_train_silhouette', 'Train Silhouette Score', axes[1, 0], '-'),  # Solid line for train metrics
-        ('final_silhouette', 'Test Silhouette Score', axes[1, 1], '--')   # Dashed line for test metrics
+        ('final_train_loss', 'Train Loss vs Latent Dimension', axes[0, 0]),
+        ('final_test_loss', 'Test Loss vs Latent Dimension', axes[0, 1]), 
+        ('final_train_silhouette', 'Train Silhouette vs Latent Dimension', axes[1, 0]),
+        ('final_silhouette', 'Test Silhouette vs Latent Dimension', axes[1, 1])
     ]
     
     for i, (architecture, results) in enumerate(all_results.items()):
         # Sort results by latent dimension
         sorted_results = sorted(results, key=lambda x: x[1].get('latent_dim', 0))
         
-        for metric_key, metric_label, ax, linestyle in metrics:
+        for metric_key, metric_title, ax in metrics:
             latent_dims = []
             metric_values = []
             
@@ -908,33 +909,65 @@ def plot_metrics_vs_latent_dim(
                     latent_dims.append(latent_dim)
                     metric_values.append(history.get(metric_key, 0))
             
-            # Plot with consistent colors and specified linestyle
+            # Plot with consistent colors and styling to match AutoEncoderJupyterTest.ipynb
             if latent_dims and metric_values:
                 ax.plot(latent_dims, metric_values, 'o-', 
                         label=architecture, 
-                        color=colors[i],  # Index-based color assignment
-                        linestyle=linestyle)  # Use different linestyles for train vs test
+                        color=colors[i],
+                        linewidth=2.5,
+                        markersize=8,
+                        markerfacecolor=colors[i],
+                        markeredgecolor='white',
+                        markeredgewidth=1)
                 
-                ax.set_title(f'{metric_label} vs. Latent Dimension')
-                ax.set_xlabel('Latent Dimension')
-                ax.set_ylabel(metric_label)
-                ax.grid(True, alpha=0.3)
-                ax.set_xscale('log', base=2)  # Log scale for latent dimensions
-                ax.legend()
+                ax.set_title(metric_title, fontsize=12, fontweight='bold', pad=10)
+                ax.set_xlabel('Latent Dimension', fontsize=11)
+                ax.set_ylabel(metric_title.split(' vs ')[0], fontsize=11)
+                ax.grid(True, alpha=0.3, linestyle='--')
+                
+                # Style the axes to match AutoEncoderJupyterTest.ipynb
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+                ax.spines['left'].set_linewidth(1.5)
+                ax.spines['bottom'].set_linewidth(1.5)
+                
+                # Set background color slightly off-white
+                ax.set_facecolor('#fafafa')
+                
+                # Use log scale for latent dimensions if appropriate
+                if len(set(latent_dims)) > 2:
+                    ax.set_xscale('log', base=2)
+                
+                # Add legend to each subplot
+                ax.legend(frameon=True, fancybox=True, shadow=True, fontsize=10)
     
-    # Add title with session info if provided
-    title = "Metrics Comparison"
+    # Add overall title with session info if provided
+    title = "Metrics vs Latent Dimension Analysis"
     if session_timestamp and random_seed:
         title += f" - Run: {session_timestamp} (Seed: {random_seed})"
     elif session_timestamp:
         title += f" - Run: {session_timestamp}"
     
-    plt.suptitle(title, fontsize=14)
-    plt.tight_layout()
+    plt.suptitle(title, fontsize=16, fontweight='bold', y=0.98)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust layout to accommodate suptitle
     
     # Save the figure if path provided
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        if session_timestamp:
+            # If save_path is a directory, create filename; if it's a file, use it directly
+            if os.path.isdir(save_path) or not os.path.splitext(save_path)[1]:
+                # save_path is a directory
+                os.makedirs(save_path, exist_ok=True)
+                filename = f"metrics_vs_latent_dim_{session_timestamp}.png"
+                full_path = os.path.join(save_path, filename)
+            else:
+                # save_path is already a filename
+                full_path = save_path
+        else:
+            full_path = save_path
+        
+        plt.savefig(full_path, dpi=300, bbox_inches='tight', facecolor='white')
+        print(f"Saved metrics vs latent dimension plot to: {full_path}")
     
     plt.show()
 

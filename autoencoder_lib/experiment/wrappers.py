@@ -17,32 +17,40 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 from torch.utils.data import DataLoader, TensorDataset
 
 from .runner import ExperimentRunner
+from .visualization import (
+    plot_loss_curves, 
+    plot_metrics_vs_latent_dim,
+    create_performance_heatmaps,
+    create_comparison_tables,
+    save_experiment_summary,
+    plot_architecture_comparison,
+    generate_comprehensive_report
+)
 from ..models import create_autoencoder, MODEL_ARCHITECTURES
 from ..data import generate_dataset
 from ..utils.reproducibility import set_seed, SeedContext
 
 
 def run_single_experiment(
-    architecture: str,
-    latent_dim: int,
     dataset_config: Dict[str, Any],
+    architecture_name: str,
+    latent_dim: int,
     learning_rate: float = 0.001,
     epochs: int = 100,
     batch_size: int = 32,
     output_dir: str = "experiment_results",
-    device: Optional[torch.device] = None,
+    device: Optional[str] = None,
     random_seed: int = 42,
     save_model: bool = True,
-    plot_results: bool = True,
     verbose: bool = True
 ) -> Dict[str, Any]:
     """
     Run a single autoencoder experiment with specified parameters.
     
     Args:
-        architecture: Model architecture name (must be in MODEL_ARCHITECTURES)
-        latent_dim: Latent space dimensionality
         dataset_config: Configuration dictionary for dataset generation
+        architecture_name: Model architecture name (must be in MODEL_ARCHITECTURES)
+        latent_dim: Latent space dimensionality
         learning_rate: Learning rate for training
         epochs: Number of training epochs
         batch_size: Batch size for training
@@ -50,7 +58,6 @@ def run_single_experiment(
         device: PyTorch device ('cpu' or 'cuda')
         random_seed: Random seed for reproducibility
         save_model: Whether to save the trained model
-        plot_results: Whether to generate and save plots
         verbose: Whether to print progress information
         
     Returns:
@@ -58,11 +65,12 @@ def run_single_experiment(
     """
     if verbose:
         print(f"\n=== Running Single Experiment ===")
-        print(f"Architecture: {architecture}, Latent Dim: {latent_dim}")
+        print(f"Architecture: {architecture_name}, Latent Dim: {latent_dim}")
     
     # Set device
     if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device(device)
     
     # Create output directory
     output_path = Path(output_dir)
@@ -70,7 +78,7 @@ def run_single_experiment(
     
     # Generate experiment name
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    experiment_name = f"{architecture}_latent{latent_dim}_{timestamp}"
+    experiment_name = f"{architecture_name}_latent{latent_dim}_{timestamp}"
     exp_dir = output_path / experiment_name
     exp_dir.mkdir(exist_ok=True)
     
@@ -88,14 +96,14 @@ def run_single_experiment(
             
             # Create model
             if verbose:
-                print(f"Creating {architecture} model...")
+                print(f"Creating {architecture_name} model...")
             
             # Get input shape from first batch
             sample_batch = next(iter(train_loader))
             input_shape = sample_batch[0].shape[1:]  # Remove batch dimension
             
             model = create_autoencoder(
-                architecture=architecture,
+                architecture=architecture_name,
                 input_shape=input_shape,
                 latent_dim=latent_dim
             ).to(device)
@@ -127,10 +135,19 @@ def run_single_experiment(
                 experiment_name=experiment_name
             )
             
+            # Extract final metrics from history
+            metrics = {
+                'final_train_loss': history.get('final_train_loss'),
+                'final_test_loss': history.get('final_test_loss'),
+                'final_train_silhouette': history.get('final_train_silhouette'),
+                'final_silhouette': history.get('final_test_silhouette'),
+                'training_time': history.get('training_time')
+            }
+            
             # Compile results
             results = {
                 'experiment_name': experiment_name,
-                'architecture': architecture,
+                'architecture': architecture_name,
                 'latent_dim': latent_dim,
                 'config': {
                     'learning_rate': learning_rate,
@@ -140,6 +157,8 @@ def run_single_experiment(
                     'dataset_config': dataset_config
                 },
                 'history': history,
+                'metrics': metrics,
+                'model': trained_model,
                 'dataset_info': {
                     'class_names': class_names,
                     'input_shape': list(input_shape),
@@ -155,7 +174,7 @@ def run_single_experiment(
             _save_results_to_json(results, results_file)
             
             if verbose:
-                final_loss = history.get('final_test_loss', 'N/A')
+                final_loss = metrics.get('final_test_loss', 'N/A')
                 print(f"Experiment completed successfully! Final test loss: {final_loss}")
                 print(f"Results saved to: {exp_dir}")
             
@@ -168,157 +187,183 @@ def run_single_experiment(
         
         return {
             'experiment_name': experiment_name,
-            'architecture': architecture,
+            'architecture': architecture_name,
             'latent_dim': latent_dim,
             'error': error_msg,
             'success': False,
-            'timestamp': timestamp
+            'timestamp': timestamp,
+            'metrics': {},
+            'history': {},
+            'model': None
         }
 
 
 def run_systematic_experiments(
-    architectures: List[str],
-    latent_dims: List[int],
     dataset_config: Dict[str, Any],
+    architectures: List[str] = ['simple_linear', 'deeper_linear', 'convolutional', 'deeper_convolutional'],
+    latent_dims: List[int] = [4, 8, 16, 32],
     learning_rates: List[float] = [0.001],
-    epochs_list: List[int] = [100],
+    epochs: int = 10,
     batch_size: int = 32,
     output_dir: str = "systematic_experiments",
-    device: Optional[torch.device] = None,
     random_seed: int = 42,
-    save_models: bool = True,
+    device: Optional[str] = None,
+    generate_visualizations: bool = True,
+    show_plots: bool = True,
     verbose: bool = True
-) -> Dict[str, Any]:
+) -> Dict[str, List[Dict[str, Any]]]:
     """
     Run systematic experiments across multiple architectures and hyperparameters.
     
     Args:
-        architectures: List of model architecture names to test
-        latent_dims: List of latent dimensions to test
         dataset_config: Configuration for dataset generation
+        architectures: List of architecture names to test
+        latent_dims: List of latent dimensions to test
         learning_rates: List of learning rates to test
-        epochs_list: List of epoch counts to test
+        epochs: Number of training epochs
         batch_size: Batch size for training
-        output_dir: Directory to save all experiment results
-        device: PyTorch device ('cpu' or 'cuda')
+        output_dir: Directory to save results
         random_seed: Random seed for reproducibility
-        save_models: Whether to save trained models
+        device: PyTorch device ('cpu' or 'cuda')
+        generate_visualizations: Whether to generate comprehensive visualizations
+        show_plots: Whether to display plots during generation
         verbose: Whether to print progress information
         
     Returns:
-        Dictionary containing all experiment results and summary analysis
+        Dictionary mapping architecture names to lists of experiment results
     """
     if verbose:
-        print("\n" + "="*60)
-        print("STARTING SYSTEMATIC AUTOENCODER EXPERIMENTS")
-        print("="*60)
+        print("🚀 Starting Systematic Autoencoder Experiments")
+        print("=" * 60)
+        print(f"📊 Architectures: {architectures}")
+        print(f"🔢 Latent dimensions: {latent_dims}")
+        print(f"📈 Learning rates: {learning_rates}")
+        print(f"⏰ Epochs: {epochs}")
+        print(f"📁 Output directory: {output_dir}")
+        print("=" * 60)
     
-    # Calculate total experiments
-    total_experiments = len(architectures) * len(latent_dims) * len(learning_rates) * len(epochs_list)
-    if verbose:
-        print(f"Total experiments planned: {total_experiments}")
-        print(f"Architectures: {architectures}")
-        print(f"Latent dimensions: {latent_dims}")
-        print(f"Learning rates: {learning_rates}")
-        print(f"Epochs: {epochs_list}")
+    # Set global random seed
+    set_seed(random_seed)
     
     # Create output directory
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
     
-    # Initialize results storage
-    all_results = []
-    successful_experiments = 0
-    failed_experiments = 0
-    
-    # Generate dataset once for all experiments
+    # Prepare dataset once for all experiments
     if verbose:
-        print("\nGenerating shared dataset...")
+        print("📊 Preparing dataset...")
+    
     dataset_info = generate_dataset(**dataset_config)
     
-    # Run experiments
-    experiment_count = 0
-    start_time = time.time()
+    # Initialize results dictionary
+    all_results = {arch: [] for arch in architectures}
+    total_experiments = len(architectures) * len(latent_dims) * len(learning_rates)
+    current_experiment = 0
     
+    # Run experiments for each combination
     for architecture in architectures:
+        if verbose:
+            print(f"\n🏗️ Testing architecture: {architecture}")
+            print("-" * 40)
+        
         for latent_dim in latent_dims:
             for learning_rate in learning_rates:
-                for epochs in epochs_list:
-                    experiment_count += 1
-                    
-                    if verbose:
-                        print(f"\n--- Experiment {experiment_count}/{total_experiments} ---")
-                        print(f"Config: {architecture}, latent_dim={latent_dim}, lr={learning_rate}, epochs={epochs}")
-                    
-                    # Run single experiment
-                    result = run_single_experiment(
-                        architecture=architecture,
-                        latent_dim=latent_dim,
+                current_experiment += 1
+                
+                if verbose:
+                    print(f"🧪 Experiment {current_experiment}/{total_experiments}: {architecture} (dim={latent_dim}, lr={learning_rate})")
+                
+                # Run single experiment
+                with SeedContext(random_seed):
+                    experiment_result = run_single_experiment(
                         dataset_config=dataset_config,
+                        architecture_name=architecture,
+                        latent_dim=latent_dim,
                         learning_rate=learning_rate,
                         epochs=epochs,
                         batch_size=batch_size,
-                        output_dir=str(output_path / f"experiment_{experiment_count:03d}"),
+                        output_dir=output_dir,
                         device=device,
-                        random_seed=random_seed,
-                        save_model=save_models,
-                        plot_results=True,
-                        verbose=False  # Reduce verbosity for systematic runs
+                        verbose=False  # Suppress individual experiment output
                     )
-                    
-                    all_results.append(result)
-                    
-                    if result.get('success', False):
-                        successful_experiments += 1
-                        if verbose:
-                            final_loss = result.get('history', {}).get('final_test_loss', 'N/A')
-                            print(f"  ✅ SUCCESS - Final loss: {final_loss}")
-                    else:
-                        failed_experiments += 1
-                        if verbose:
-                            error = result.get('error', 'Unknown error')
-                            print(f"  ❌ FAILED - {error}")
-    
-    total_time = time.time() - start_time
-    
-    # Generate summary analysis
-    summary = {
-        'systematic_experiment_summary': {
-            'total_experiments': total_experiments,
-            'successful_experiments': successful_experiments,
-            'failed_experiments': failed_experiments,
-            'total_time_seconds': total_time,
-            'average_time_per_experiment': total_time / total_experiments if total_experiments > 0 else 0
-        },
-        'parameters': {
-            'architectures': architectures,
-            'latent_dims': latent_dims,
-            'learning_rates': learning_rates,
-            'epochs_list': epochs_list,
-            'dataset_config': dataset_config,
-            'batch_size': batch_size,
-            'random_seed': random_seed
-        },
-        'all_results': all_results,
-        'analysis': _analyze_systematic_results(all_results) if successful_experiments > 0 else None,
-        'timestamp': datetime.now().isoformat(),
-        'output_dir': str(output_path)
-    }
-    
-    # Save comprehensive results
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    results_file = output_path / f'systematic_results_{timestamp}.json'
-    _save_results_to_json(summary, results_file)
+                
+                # Store result with additional metadata
+                result_entry = {
+                    'experiment_name': experiment_result['experiment_name'],
+                    'architecture': architecture,
+                    'latent_dim': latent_dim,
+                    'learning_rate': learning_rate,
+                    'epochs': epochs,
+                    'batch_size': batch_size,
+                    'metrics': experiment_result['metrics'],
+                    'history': experiment_result['history'],
+                    'model': experiment_result['model']
+                }
+                
+                all_results[architecture].append(result_entry)
+                
+                # Optional: Generate individual loss curves
+                if generate_visualizations and verbose:
+                    plot_loss_curves(
+                        experiment_result, 
+                        save_dir=output_dir,
+                        show_plots=False  # Don't show individual plots to avoid clutter
+                    )
     
     if verbose:
-        print("\n" + "="*60)
-        print("SYSTEMATIC EXPERIMENTS COMPLETED")
-        print("="*60)
-        print(f"Total: {total_experiments}, Successful: {successful_experiments}, Failed: {failed_experiments}")
-        print(f"Total time: {total_time:.2f} seconds")
-        print(f"Results saved to: {results_file}")
+        print(f"\n✅ All {total_experiments} experiments completed!")
+        print("=" * 60)
     
-    return summary
+    # Generate comprehensive visualizations
+    if generate_visualizations:
+        if verbose:
+            print("\n🎨 Generating comprehensive visualization report...")
+        
+        # Use the visualization functions to match original notebook output
+        visualization_files = generate_comprehensive_report(
+            systematic_results=all_results,
+            output_dir=output_dir,
+            show_plots=show_plots
+        )
+        
+        if verbose:
+            print("\n📊 Additional Analysis:")
+            print("-" * 30)
+            
+            # Print architecture-specific summaries (matching original notebook)
+            for architecture, results in all_results.items():
+                print(f"\n🏗️ {architecture} Results:")
+                print("Latent Dim | Test Loss | Test Silhouette | Train Time")
+                print("-" * 50)
+                
+                sorted_results = sorted(results, key=lambda x: x['latent_dim'])
+                for result in sorted_results:
+                    metrics = result['metrics']
+                    test_loss = metrics.get('final_test_loss', 0)
+                    test_silh = metrics.get('final_silhouette', 0) 
+                    train_time = metrics.get('training_time', 0)
+                    
+                    print(f"{result['latent_dim']:^10} | {test_loss:^9.4f} | {test_silh:^15.4f} | {train_time:^10.2f}s")
+    
+    # Save complete results to JSON
+    results_path = Path(output_dir) / f"systematic_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    
+    # Prepare serializable results (remove model objects)
+    serializable_results = {}
+    for arch, results in all_results.items():
+        serializable_results[arch] = []
+        for result in results:
+            serializable_result = result.copy()
+            del serializable_result['model']  # Remove non-serializable model object
+            serializable_results[arch].append(serializable_result)
+    
+    with open(results_path, 'w') as f:
+        json.dump(serializable_results, f, indent=2, default=str)
+    
+    if verbose:
+        print(f"\n💾 Complete results saved to: {results_path}")
+        print("🎉 Systematic experiment workflow complete!")
+    
+    return all_results
 
 
 def load_experiment_results(results_path: Union[str, Path]) -> Dict[str, Any]:

@@ -19,7 +19,8 @@ from datetime import datetime
 # Import core visualization functions
 from ..visualization.training_viz import (
     plot_latent_dimension_analysis,
-    plot_metrics_vs_latent_dim
+    plot_metrics_vs_latent_dim,
+    plot_architecture_latent_heatmaps
 )
 from ..visualization.reconstruction_viz import visualize_reconstructions as plot_reconstruction_comparison
 
@@ -181,11 +182,20 @@ def generate_comprehensive_report(systematic_results: Dict[str, List[Dict[str, A
         session_timestamp=datetime.now().strftime("%Y%m%d_%H%M%S")
     )
     
-    # 3. Create comparison tables
+    # 3. Create architecture × latent dimension heatmaps for all 4 metrics
+    print("🔥 Creating architecture × latent dimension heatmaps...")
+    # Use the same data format as metrics plots
+    plot_architecture_latent_heatmaps(
+        all_results=all_results_for_metrics,
+        save_path=output_dir,
+        session_timestamp=datetime.now().strftime("%Y%m%d_%H%M%S")
+    )
+    
+    # 4. Create comparison tables
     print("📋 Creating comparison tables...")
     df = create_comparison_tables(systematic_results)
     
-    # 4. Save experiment summary
+    # 5. Save experiment summary
     print("💾 Saving experiment summary...")
     csv_path = save_experiment_summary(systematic_results, save_dir=output_dir)
     generated_files['summary_csv'] = csv_path

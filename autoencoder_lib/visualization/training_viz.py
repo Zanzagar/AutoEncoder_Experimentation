@@ -1319,4 +1319,161 @@ def plot_systematic_training_curves(
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Saved systematic training curves to: {save_path}")
     
+    plt.show()
+
+
+def plot_architecture_latent_heatmaps(
+    all_results: Dict[str, List[Tuple]],
+    save_path: Optional[str] = None,
+    session_timestamp: Optional[str] = None,
+    random_seed: Optional[int] = None,
+    figure_size: Tuple[int, int] = (20, 16)
+) -> None:
+    """
+    Create architecture × latent dimension heatmaps for all 4 metrics.
+    Creates a 2x2 subplot layout with Train Loss, Test Loss, Train Silhouette, and Test Silhouette heatmaps.
+    
+    Args:
+        all_results: Dictionary mapping architecture -> list of (model, history) tuples
+        save_path: Path to save the figure (optional)
+        session_timestamp: Session timestamp for title/filename
+        random_seed: Random seed for title
+        figure_size: Size of the figure
+    """
+    import seaborn as sns
+    
+    # Get list of architectures and latent dimensions
+    architectures = list(all_results.keys())
+    all_latent_dims = set()
+    
+    # Collect all unique latent dimensions
+    for architecture, results in all_results.items():
+        for model, history in results:
+            latent_dim = history.get('latent_dim', 0)
+            all_latent_dims.add(latent_dim)
+    
+    latent_dims = sorted(list(all_latent_dims))
+    
+    if not architectures or not latent_dims:
+        print("No data available for heatmaps")
+        return
+    
+    # Define the metrics to plot
+    metrics = [
+        ('final_train_loss', 'Train Loss', 'RdYlGn_r'),  # Lower is better
+        ('final_test_loss', 'Test Loss', 'RdYlGn_r'),    # Lower is better
+        ('final_train_silhouette', 'Train Silhouette', 'RdYlGn'),  # Higher is better
+        ('final_silhouette', 'Test Silhouette', 'RdYlGn')          # Higher is better
+    ]
+    
+    # Create 2x2 subplot grid
+    fig, axes = plt.subplots(2, 2, figsize=figure_size)
+    
+    for idx, (metric_key, metric_title, colormap) in enumerate(metrics):
+        ax = axes[idx // 2, idx % 2]
+        
+        # Create data matrix for heatmap
+        heatmap_data = np.full((len(architectures), len(latent_dims)), np.nan)
+        
+        for arch_idx, architecture in enumerate(architectures):
+            results = all_results[architecture]
+            
+            for model, history in results:
+                latent_dim = history.get('latent_dim', 0)
+                if latent_dim in latent_dims and metric_key in history:
+                    dim_idx = latent_dims.index(latent_dim)
+                    heatmap_data[arch_idx, dim_idx] = history[metric_key]
+        
+        # Create DataFrame for seaborn heatmap
+        heatmap_df = pd.DataFrame(
+            heatmap_data,
+            index=architectures,
+            columns=[f'{dim}' for dim in latent_dims]
+        )
+        
+        # Create heatmap with seaborn
+        mask = np.isnan(heatmap_data)
+        
+        # Create heatmap
+        sns.heatmap(
+            heatmap_df,
+            annot=True,
+            fmt='.3f',
+            cmap=colormap,
+            mask=mask,
+            ax=ax,
+            square=False,
+            linewidths=0.5,
+            cbar_kws={
+                'label': metric_title,
+                'shrink': 0.8
+            },
+            annot_kws={'fontsize': 10}
+        )
+        
+        # Highlight best performance with border
+        if not np.isnan(heatmap_data).all():
+            if 'loss' in metric_key.lower():
+                # Lower is better for loss
+                best_coords = np.unravel_index(np.nanargmin(heatmap_data), heatmap_data.shape)
+            else:
+                # Higher is better for silhouette
+                best_coords = np.unravel_index(np.nanargmax(heatmap_data), heatmap_data.shape)
+            
+            # Add border around best cell
+            ax.add_patch(plt.Rectangle(
+                (best_coords[1], best_coords[0]), 1, 1,
+                fill=False, edgecolor='black', linewidth=3
+            ))
+        
+        # Style the heatmap to match AutoEncoderJupyterTest.ipynb
+        ax.set_title(f'{metric_title} Heatmap\n(Architecture × Latent Dimension)', 
+                    fontsize=14, fontweight='bold', pad=15)
+        ax.set_xlabel('Latent Dimension', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Architecture', fontsize=12, fontweight='bold')
+        
+        # Rotate x-axis labels if needed
+        ax.tick_params(axis='x', rotation=0)
+        ax.tick_params(axis='y', rotation=0)
+        
+        # Adjust y-axis labels for readability
+        yticklabels = ax.get_yticklabels()
+        for label in yticklabels:
+            label.set_fontsize(10)
+            # Make architecture names more readable
+            label.set_text(label.get_text().replace('_', ' ').title())
+        
+        # Adjust x-axis labels
+        xticklabels = ax.get_xticklabels()
+        for label in xticklabels:
+            label.set_fontsize(10)
+    
+    # Add overall title with session info if provided
+    title = "Architecture × Latent Dimension Performance Heatmaps"
+    if session_timestamp and random_seed:
+        title += f"\nRun: {session_timestamp} (Seed: {random_seed})"
+    elif session_timestamp:
+        title += f"\nRun: {session_timestamp}"
+    
+    plt.suptitle(title, fontsize=18, fontweight='bold', y=0.98)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust layout to accommodate suptitle
+    
+    # Save the figure if path provided
+    if save_path:
+        if session_timestamp:
+            # If save_path is a directory, create filename; if it's a file, use it directly
+            if os.path.isdir(save_path) or not os.path.splitext(save_path)[1]:
+                # save_path is a directory
+                os.makedirs(save_path, exist_ok=True)
+                filename = f"architecture_latent_heatmaps_{session_timestamp}.png"
+                full_path = os.path.join(save_path, filename)
+            else:
+                # save_path is already a filename
+                full_path = save_path
+        else:
+            full_path = save_path
+        
+        plt.savefig(full_path, dpi=300, bbox_inches='tight', facecolor='white')
+        print(f"Saved architecture × latent dimension heatmaps to: {full_path}")
+    
     plt.show() 

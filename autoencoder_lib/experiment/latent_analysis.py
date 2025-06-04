@@ -133,7 +133,7 @@ def create_latent_tsne_analysis(
     Args:
         analysis_results: Results from analyze_latent_space()
         output_dir: Directory to save visualizations
-        random_state: Random seed for reproducibility
+        random_state: Random seed for reproducibility (note: function uses fixed seed)
         
     Returns:
         Dictionary containing t-SNE quality metrics
@@ -146,7 +146,7 @@ def create_latent_tsne_analysis(
     test_labels = analysis_results['test_labels']
     class_names = analysis_results.get('class_names')
     
-    # Generate side-by-side latent space comparison
+    # Generate side-by-side latent space comparison using latent data directly
     print("   Generating side-by-side t-SNE visualization...")
     
     # Set save paths if output directory specified
@@ -155,17 +155,25 @@ def create_latent_tsne_analysis(
         os.makedirs(output_dir, exist_ok=True)
         save_path = os.path.join(output_dir, 'latent_tsne_comparison.png')
     
-    # Use the existing visualization function
-    train_silhouette, test_silhouette = visualize_side_by_side_latent_spaces(
-        model=None,  # Not needed for direct latent input
-        train_latent_data=train_latent,
-        train_labels=train_labels,
-        test_latent_data=test_latent,
-        test_labels=test_labels,
+    # Use the latent space visualization function directly
+    # Train t-SNE
+    _, train_silhouette = visualize_latent_space_2d(
+        latent_vectors=train_latent,
+        labels=train_labels,
         class_names=class_names,
-        device=torch.device('cpu'),
-        random_state=random_state,
-        save_path=save_path
+        method='tsne',
+        title='Training Set - Latent Space t-SNE',
+        save_path=save_path.replace('.png', '_train.png') if save_path else None
+    )
+    
+    # Test t-SNE
+    _, test_silhouette = visualize_latent_space_2d(
+        latent_vectors=test_latent,
+        labels=test_labels,
+        class_names=class_names,
+        method='tsne',
+        title='Test Set - Latent Space t-SNE',
+        save_path=save_path.replace('.png', '_test.png') if save_path else None
     )
     
     # Generate individual t-SNE visualizations for more detailed analysis

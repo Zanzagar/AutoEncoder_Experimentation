@@ -349,29 +349,79 @@ def analyze_latent_clustering(
     unique_labels = np.unique(labels)
     n_clusters = len(unique_labels)
     
+    # Check if we have enough classes for clustering analysis
+    if n_clusters < 2:
+        print(f"   ⚠️ Warning: Only {n_clusters} unique class(es) found. Clustering analysis requires at least 2 classes.")
+        return {
+            'silhouette_score': 0.0,
+            'adjusted_rand_index': 0.0,
+            'normalized_mutual_info': 0.0,
+            'best_silhouette_score': 0.0,
+            'optimal_num_clusters': n_clusters
+        }
+    
+    # Check if we have enough samples for silhouette analysis
+    if len(latent_vectors) < 2:
+        print(f"   ⚠️ Warning: Only {len(latent_vectors)} sample(s) found. Clustering analysis requires at least 2 samples.")
+        return {
+            'silhouette_score': 0.0,
+            'adjusted_rand_index': 0.0,
+            'normalized_mutual_info': 0.0,
+            'best_silhouette_score': 0.0,
+            'optimal_num_clusters': n_clusters
+        }
+    
     # Silhouette score
-    silhouette = silhouette_score(latent_vectors, labels)
+    try:
+        silhouette = silhouette_score(latent_vectors, labels)
+    except ValueError as e:
+        print(f"   ⚠️ Warning: Could not calculate silhouette score: {e}")
+        silhouette = 0.0
     
     # K-means clustering
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-    predicted_labels = kmeans.fit_predict(latent_vectors)
-    
-    # Clustering metrics
-    ari = adjusted_rand_score(labels, predicted_labels)
-    nmi = normalized_mutual_info_score(labels, predicted_labels)
+    try:
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+        predicted_labels = kmeans.fit_predict(latent_vectors)
+        
+        # Clustering metrics
+        ari = adjusted_rand_score(labels, predicted_labels)
+        nmi = normalized_mutual_info_score(labels, predicted_labels)
+    except Exception as e:
+        print(f"   ⚠️ Warning: Could not perform K-means clustering: {e}")
+        ari = 0.0
+        nmi = 0.0
+        predicted_labels = labels  # Fall back to true labels
     
     metrics = {
         'silhouette_score': silhouette,
         'adjusted_rand_index': ari,
-        'normalized_mutual_info': nmi
+        'normalized_mutual_info': nmi,
+        'best_silhouette_score': silhouette,  # For compatibility with existing code
+        'optimal_num_clusters': n_clusters    # For compatibility with existing code
     }
     
     # Visualization
     fig, axes = plt.subplots(2, 2, figsize=figure_size)
     
-    # Original clustering (t-SNE)
-    tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(latent_vectors)-1))
-    embedding_2d = tsne.fit_transform(latent_vectors)
+    # Original clustering (t-SNE) - only if we have enough samples
+    try:
+        if len(latent_vectors) > 1:
+            perplexity = min(30, len(latent_vectors) - 1)
+            tsne = TSNE(n_components=2, random_state=42, perplexity=perplexity)
+            embedding_2d = tsne.fit_transform(latent_vectors)
+        else:
+            # For single sample, just use the first two dimensions or zeros
+            if latent_vectors.shape[1] >= 2:
+                embedding_2d = latent_vectors[:, :2]
+            else:
+                embedding_2d = np.zeros((len(latent_vectors), 2))
+    except Exception as e:
+        print(f"   ⚠️ Warning: Could not perform t-SNE: {e}")
+        # Fall back to first two dimensions or zeros
+        if latent_vectors.shape[1] >= 2:
+            embedding_2d = latent_vectors[:, :2]
+        else:
+            embedding_2d = np.zeros((len(latent_vectors), 2))
     
     colors = plt.cm.tab10(np.linspace(0, 1, len(unique_labels)))
     
@@ -396,8 +446,8 @@ def analyze_latent_clustering(
     axes[0, 1].grid(True, alpha=0.3)
     
     # Metrics comparison
-    metric_names = list(metrics.keys())
-    metric_values = list(metrics.values())
+    metric_names = ['silhouette_score', 'adjusted_rand_index', 'normalized_mutual_info']
+    metric_values = [metrics[name] for name in metric_names]
     
     bars = axes[1, 0].bar(range(len(metric_names)), metric_values, alpha=0.7)
     axes[1, 0].set_title('Clustering Metrics')
@@ -411,27 +461,33 @@ def analyze_latent_clustering(
                        f'{value:.3f}', ha='center', va='bottom')
     
     # Cluster centers analysis
-    if latent_vectors.shape[1] >= 2:
+    if latent_vectors.shape[1] >= 2 and n_clusters > 0:
         # Show cluster centers in first 2 dimensions
         class_centers = []
         for label in unique_labels:
             mask = labels == label
-            center = np.mean(latent_vectors[mask], axis=0)
-            class_centers.append(center)
+            if np.any(mask):  # Check if this label has any samples
+                center = np.mean(latent_vectors[mask], axis=0)
+                class_centers.append(center)
         
-        class_centers = np.array(class_centers)
-        
-        # Plot first two dimensions
-        for i, (label, center) in enumerate(zip(unique_labels, class_centers)):
-            label_name = class_names[label] if class_names and label < len(class_names) else f"Class {label}"
-            axes[1, 1].scatter(center[0], center[1], c=[colors[i]], s=200, 
-                             marker='*', label=label_name, edgecolors='black', linewidth=2)
-        
-        axes[1, 1].set_title('Class Centers (First 2 Dims)')
-        axes[1, 1].set_xlabel('Latent Dim 0')
-        axes[1, 1].set_ylabel('Latent Dim 1')
-        axes[1, 1].legend()
-        axes[1, 1].grid(True, alpha=0.3)
+        if class_centers:
+            class_centers = np.array(class_centers)
+            
+            # Plot first two dimensions
+            for i, (label, center) in enumerate(zip(unique_labels, class_centers)):
+                label_name = class_names[label] if class_names and label < len(class_names) else f"Class {label}"
+                axes[1, 1].scatter(center[0], center[1], c=[colors[i]], s=200, 
+                                 marker='*', label=label_name, edgecolors='black', linewidth=2)
+            
+            axes[1, 1].set_title('Class Centers (First 2 Dims)')
+            axes[1, 1].set_xlabel('Latent Dim 0')
+            axes[1, 1].set_ylabel('Latent Dim 1')
+            axes[1, 1].legend()
+            axes[1, 1].grid(True, alpha=0.3)
+        else:
+            axes[1, 1].text(0.5, 0.5, 'No valid class centers', 
+                           transform=axes[1, 1].transAxes, ha='center', va='center')
+            axes[1, 1].set_title('Class Centers (No Data)')
     else:
         axes[1, 1].axis('off')
     

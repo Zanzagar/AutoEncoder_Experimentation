@@ -42,24 +42,58 @@ def plot_training_curves(
     
     # Plot learning rate if available
     if 'learning_rate' in history:
-        axes[1].plot(epochs, history['learning_rate'], 'g-', linewidth=2)
-        axes[1].set_title('Learning Rate Schedule', fontsize=14)
-        axes[1].set_xlabel('Epoch')
-        axes[1].set_ylabel('Learning Rate')
-        axes[1].set_yscale('log')
-        axes[1].grid(True, alpha=0.3)
+        # Handle case where learning_rate might be a single value or a list
+        lr_data = history['learning_rate']
+        if isinstance(lr_data, (int, float)):
+            # If single value, create a flat line across all epochs
+            lr_data = [lr_data] * len(epochs)
+        elif isinstance(lr_data, list) and len(lr_data) == 1:
+            # If list with single value, expand to match epochs
+            lr_data = lr_data * len(epochs)
+        
+        # Only plot if we have valid data
+        if isinstance(lr_data, list) and len(lr_data) == len(epochs):
+            axes[1].plot(epochs, lr_data, 'g-', linewidth=2)
+            axes[1].set_title('Learning Rate Schedule', fontsize=14)
+            axes[1].set_xlabel('Epoch')
+            axes[1].set_ylabel('Learning Rate')
+            axes[1].set_yscale('log')
+            axes[1].grid(True, alpha=0.3)
+        else:
+            # Fall back to silhouette scores if learning rate data is invalid
+            if 'train_silhouette_scores' in history and history['train_silhouette_scores']:
+                axes[1].plot(range(1, len(history['train_silhouette_scores'])+1), 
+                           history['train_silhouette_scores'], 'b-', 
+                           label='Training Silhouette', linewidth=2)
+            if 'test_silhouette_scores' in history and history['test_silhouette_scores']:
+                axes[1].plot(range(1, len(history['test_silhouette_scores'])+1), 
+                           history['test_silhouette_scores'], 'r-', 
+                           label='Test Silhouette', linewidth=2)
+            
+            if ('train_silhouette_scores' in history and history['train_silhouette_scores']) or \
+               ('test_silhouette_scores' in history and history['test_silhouette_scores']):
+                axes[1].set_title('Silhouette Scores', fontsize=14)
+                axes[1].set_xlabel('Training Steps')
+                axes[1].set_ylabel('Silhouette Score')
+                axes[1].legend()
+                axes[1].grid(True, alpha=0.3)
+            else:
+                axes[1].axis('off')
     else:
         # Plot silhouette scores if available
-        if 'train_silhouette' in history:
-            axes[1].plot(epochs, history['train_silhouette'], 'b-', 
-                        label='Training Silhouette', linewidth=2)
-        if 'test_silhouette' in history:
-            axes[1].plot(epochs, history['test_silhouette'], 'r-', 
-                        label='Test Silhouette', linewidth=2)
+        if 'train_silhouette_scores' in history and history['train_silhouette_scores']:
+            axes[1].plot(range(1, len(history['train_silhouette_scores'])+1), 
+                       history['train_silhouette_scores'], 'b-', 
+                       label='Training Silhouette', linewidth=2)
+        if 'test_silhouette_scores' in history and history['test_silhouette_scores']:
+            axes[1].plot(range(1, len(history['test_silhouette_scores'])+1), 
+                       history['test_silhouette_scores'], 'r-', 
+                       label='Test Silhouette', linewidth=2)
         
-        if 'train_silhouette' in history or 'test_silhouette' in history:
+        if ('train_silhouette_scores' in history and history['train_silhouette_scores']) or \
+           ('test_silhouette_scores' in history and history['test_silhouette_scores']):
             axes[1].set_title('Silhouette Scores', fontsize=14)
-            axes[1].set_xlabel('Epoch')
+            axes[1].set_xlabel('Training Steps')
             axes[1].set_ylabel('Silhouette Score')
             axes[1].legend()
             axes[1].grid(True, alpha=0.3)
@@ -1162,5 +1196,94 @@ def plot_latent_dim_comparison(
     if save_path and session_timestamp:
         filename = f"latent_dim_comparison_{session_timestamp}.png"
         plt.savefig(os.path.join(save_path, filename), dpi=300, bbox_inches='tight')
+    
+    plt.show()
+
+
+def plot_systematic_training_curves(
+    systematic_results: Dict[str, List[Dict]], 
+    figure_size: Tuple[int, int] = (16, 10),
+    save_path: Optional[str] = None
+) -> None:
+    """
+    Plot training curves organized by architecture with latent dimensions as legend.
+    
+    Args:
+        systematic_results: Dictionary with structure {architecture: [experiment_results]}
+        figure_size: Size of the figure
+        save_path: Path to save the plot (optional)
+    """
+    architectures = list(systematic_results.keys())
+    n_archs = len(architectures)
+    
+    if n_archs == 0:
+        print("No results to plot")
+        return
+    
+    # Create subplots - 2 columns (train/test) × n_architectures rows
+    fig, axes = plt.subplots(n_archs, 2, figsize=figure_size)
+    
+    # Handle single architecture case
+    if n_archs == 1:
+        axes = axes.reshape(1, -1)
+    
+    # Color map for different latent dimensions
+    colors = plt.cm.tab10(np.linspace(0, 1, 10))
+    
+    for arch_idx, (architecture, results) in enumerate(systematic_results.items()):
+        train_ax = axes[arch_idx, 0]
+        test_ax = axes[arch_idx, 1]
+        
+        # Group results by latent dimension
+        latent_groups = {}
+        for result in results:
+            latent_dim = result['latent_dim']
+            if latent_dim not in latent_groups:
+                latent_groups[latent_dim] = []
+            latent_groups[latent_dim].append(result)
+        
+        # Plot for each latent dimension
+        color_idx = 0
+        for latent_dim in sorted(latent_groups.keys()):
+            color = colors[color_idx % len(colors)]
+            
+            for result in latent_groups[latent_dim]:
+                history = result['history']
+                
+                # Extract training and test losses
+                train_losses = history.get('train_loss', [])
+                test_losses = history.get('test_loss', [])
+                
+                if train_losses:
+                    steps = range(1, len(train_losses) + 1)
+                    train_ax.plot(steps, train_losses, color=color, alpha=0.7, 
+                                linewidth=2, label=f'Latent {latent_dim}' if result == latent_groups[latent_dim][0] else "")
+                
+                if test_losses:
+                    steps = range(1, len(test_losses) + 1)
+                    test_ax.plot(steps, test_losses, color=color, alpha=0.7, 
+                               linewidth=2, label=f'Latent {latent_dim}' if result == latent_groups[latent_dim][0] else "")
+            
+            color_idx += 1
+        
+        # Set titles and labels
+        train_ax.set_title(f'{architecture}: Train Loss vs. Training Steps', fontsize=12, fontweight='bold')
+        train_ax.set_xlabel('Training Steps')
+        train_ax.set_ylabel('Training Loss')
+        train_ax.grid(True, alpha=0.3)
+        train_ax.legend()
+        
+        test_ax.set_title(f'{architecture}: Test Loss vs. Training Steps', fontsize=12, fontweight='bold')
+        test_ax.set_xlabel('Training Steps')
+        test_ax.set_ylabel('Test Loss')
+        test_ax.grid(True, alpha=0.3)
+        test_ax.legend()
+    
+    plt.suptitle('Training Progress by Architecture and Latent Dimension', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Saved systematic training curves to: {save_path}")
     
     plt.show() 

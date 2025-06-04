@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
 
-from ..visualization.latent_viz import visualize_latent_space_2d as visualize_latent_space
+from ..visualization.latent_viz import visualize_latent_space_2d
 from ..visualization.reconstruction_viz import visualize_reconstructions
 
 
@@ -77,6 +77,7 @@ class ExperimentRunner:
     def select_visualization_samples(self, test_data, test_labels, class_names=None, samples_per_class=2):
         """
         Select representative samples from each class for visualization.
+        Uses deterministic selection to ensure the same images are shown every time.
         
         Args:
             test_data: Test data tensor
@@ -88,36 +89,52 @@ class ExperimentRunner:
             Tuple of (view_data, view_labels, view_indices)
         """
         if class_names is not None:
-            # Find examples of each class in the test data
+            # Find examples of each class in the test data (deterministic selection)
             class_samples = {}
             
+            # First pass: collect all samples for each class
             for i in range(len(test_labels)):
                 label = test_labels[i].item()
                 if label not in class_samples:
                     class_samples[label] = []
-                
-                if len(class_samples[label]) < samples_per_class:
-                    class_samples[label].append(i)
+                class_samples[label].append(i)
             
-            # Create view data with selected samples
+            # Second pass: deterministically select first N samples for each class
             view_indices = []
             for label in sorted(class_samples.keys()):
-                view_indices.extend(class_samples[label])
+                # Sort indices to ensure deterministic selection
+                available_indices = sorted(class_samples[label])
+                # Take the first samples_per_class indices for consistency
+                selected_indices = available_indices[:min(samples_per_class, len(available_indices))]
+                view_indices.extend(selected_indices)
+                
+                if len(available_indices) < samples_per_class:
+                    print(f"Warning: Only {len(available_indices)} samples available for class {label}, requested {samples_per_class}")
             
+            # Sort view_indices to ensure consistent ordering
+            view_indices = sorted(view_indices)
             view_data = test_data[view_indices].to(self.device)
             view_labels = test_labels[view_indices]
+            
+            print(f"Selected visualization samples: {len(view_indices)} total ({samples_per_class} per class)")
+            for label in sorted(class_samples.keys()):
+                label_name = class_names[label] if class_names and label < len(class_names) else f"Class {label}"
+                selected_for_label = [i for i in view_indices if test_labels[i].item() == label]
+                print(f"  {label_name}: indices {selected_for_label}")
         else:
-            # Use first n samples if no class information
+            # Use first n samples if no class information (deterministic)
             n_test_img = min(10, len(test_data))
             view_indices = list(range(n_test_img))
             view_data = test_data[:n_test_img].to(self.device)
             view_labels = test_labels[:n_test_img]
+            print(f"Selected first {n_test_img} samples for visualization (no class info)")
         
         return view_data, view_labels, view_indices
     
     def collect_training_data_sample(self, train_loader, max_samples=500):
         """
         Collect a sample of training data for visualization and analysis.
+        Uses deterministic selection for consistency.
         
         Args:
             train_loader: DataLoader for training data
@@ -149,9 +166,67 @@ class ExperimentRunner:
             
             # Limit to max_samples to prevent memory issues
             if train_data_tensor.size(0) >= max_samples:
+                train_data_tensor = train_data_tensor[:max_samples]
+                if train_labels_tensor is not None:
+                    train_labels_tensor = train_labels_tensor[:max_samples]
                 break
         
         return train_data_tensor, train_labels_tensor
+    
+    def select_training_visualization_samples(self, train_data_tensor, train_labels_tensor, 
+                                            class_names=None, samples_per_class=2):
+        """
+        Select representative training samples for visualization.
+        Uses deterministic selection to ensure the same images are shown every time.
+        
+        Args:
+            train_data_tensor: Training data tensor
+            train_labels_tensor: Training labels tensor
+            class_names: List of class names
+            samples_per_class: Number of samples to show per class
+            
+        Returns:
+            Tuple of (train_view_data, train_view_labels, train_view_indices)
+        """
+        if train_labels_tensor is not None and class_names is not None:
+            # Find examples of each class in the training data (deterministic selection)
+            class_samples = {}
+            
+            # First pass: collect all samples for each class
+            for i in range(len(train_labels_tensor)):
+                label = train_labels_tensor[i].item()
+                if label not in class_samples:
+                    class_samples[label] = []
+                class_samples[label].append(i)
+            
+            # Second pass: deterministically select first N samples for each class
+            view_indices = []
+            for label in sorted(class_samples.keys()):
+                # Sort indices to ensure deterministic selection
+                available_indices = sorted(class_samples[label])
+                # Take the first samples_per_class indices for consistency
+                selected_indices = available_indices[:min(samples_per_class, len(available_indices))]
+                view_indices.extend(selected_indices)
+            
+            # Sort view_indices to ensure consistent ordering
+            view_indices = sorted(view_indices)
+            train_view_data = train_data_tensor[view_indices].to(self.device)
+            train_view_labels = train_labels_tensor[view_indices]
+            
+            print(f"Selected training visualization samples: {len(view_indices)} total ({samples_per_class} per class)")
+            for label in sorted(class_samples.keys()):
+                label_name = class_names[label] if class_names and label < len(class_names) else f"Class {label}"
+                selected_for_label = [i for i in view_indices if train_labels_tensor[i].item() == label]
+                print(f"  Train {label_name}: indices {selected_for_label}")
+        else:
+            # Use first n samples if no class information (deterministic)
+            n_train_img = min(len(train_data_tensor), 10)
+            view_indices = list(range(n_train_img))
+            train_view_data = train_data_tensor[:n_train_img].to(self.device)
+            train_view_labels = train_labels_tensor[:n_train_img] if train_labels_tensor is not None else None
+            print(f"Selected first {n_train_img} training samples for visualization (no class info)")
+        
+        return train_view_data, train_view_labels, view_indices
     
     def calculate_visualization_epochs(self, epochs, num_visualizations=5):
         """
@@ -239,8 +314,9 @@ class ExperimentRunner:
         
         # Collect training data sample
         train_data_tensor, train_labels_tensor = self.collect_training_data_sample(train_loader)
-        train_view_data = train_data_tensor[:min(len(view_data), len(train_data_tensor))].to(self.device)
-        train_view_labels = train_labels_tensor[:len(train_view_data)] if train_labels_tensor is not None else None
+        train_view_data, train_view_labels, train_view_indices = self.select_training_visualization_samples(
+            train_data_tensor, train_labels_tensor, class_names
+        )
         
         # Initialize training history
         history = {
@@ -299,12 +375,12 @@ class ExperimentRunner:
                 
                 if should_visualize:
                     if is_final_step:
-                        print(f"Performing final visualization at epoch {epoch}, step {step}")
+                        print(f"Performing final visualization at epoch {epoch+1}/{epochs}, step {step}")
                         final_visualization_done = True
                     
                     model.eval()
                     test_loss = self.memory_efficient_evaluation(model, test_data, loss_func)
-                    print(f'Epoch: {epoch}, Step: {step} | train loss: {loss.item():.4f} | test loss: {test_loss:.4f}')
+                    print(f'Epoch: {epoch+1}/{epochs}, Step: {step} | train loss: {loss.item():.4f} | test loss: {test_loss:.4f}')
                     
                     # Record metrics
                     history['train_loss'].append(loss.item())
@@ -315,7 +391,7 @@ class ExperimentRunner:
                         self._perform_training_visualizations(
                             model, train_view_data, train_view_labels, view_data, view_labels,
                             train_data_tensor, train_labels_tensor, test_data, test_labels,
-                            class_names, epoch, step, history, calculate_train_silhouette, 
+                            class_names, epoch+1, step, history, calculate_train_silhouette, 
                             calculate_test_silhouette
                         )
                     
@@ -333,7 +409,7 @@ class ExperimentRunner:
             # Update learning rate scheduler
             scheduler.step(test_loss)
             
-            print(f'Epoch {epoch}/{epochs} completed | '
+            print(f'Epoch {epoch+1}/{epochs} completed | '
                   f'Train loss: {avg_train_loss:.4f} | '
                   f'Test loss: {test_loss:.4f}')
         
@@ -342,16 +418,16 @@ class ExperimentRunner:
         print(f"Training completed in {train_time:.2f} seconds")
         
         # Calculate final losses
-        if train_data_tensor is not None:
-            train_data_tensor = train_data_tensor.to(self.device)
-            _, decoded_train = model(train_data_tensor)
-            final_train_loss = loss_func(decoded_train, train_data_tensor).item()
-            print(f"Final train loss: {final_train_loss:.4f}")
-        else:
-            final_train_loss = None
-        
-        final_test_loss = self.memory_efficient_evaluation(model, test_data, loss_func)
-        print(f"Final test loss: {final_test_loss:.4f}")
+        model.eval()
+        with torch.no_grad():
+            if train_data_tensor is not None:
+                train_data_tensor = train_data_tensor.to(self.device)
+                _, decoded_train = model(train_data_tensor)
+                final_train_loss = loss_func(decoded_train, train_data_tensor).item()
+            else:
+                final_train_loss = None
+            
+            final_test_loss = self.memory_efficient_evaluation(model, test_data, loss_func)
         
         # Final visualization and silhouette calculation
         final_train_silhouette, final_test_silhouette = self._perform_final_evaluation(
@@ -359,6 +435,32 @@ class ExperimentRunner:
             class_names, calculate_train_silhouette, calculate_test_silhouette,
             final_visualization_done, train_view_data, train_view_labels, view_data, view_labels
         )
+        
+        # CONSOLIDATED FINAL RESULTS SUMMARY
+        print("\n" + "="*70)
+        print("🎯 FINAL EXPERIMENT RESULTS")
+        print("="*70)
+        print(f"📊 Training Summary:")
+        print(f"   • Model: {model.__class__.__name__}")
+        print(f"   • Training Time: {train_time:.2f} seconds")
+        print(f"   • Total Epochs: {epochs}")
+        print(f"   • Learning Rate: {learning_rate}")
+        print(f"\n📈 Final Loss Metrics:")
+        if final_train_loss is not None:
+            print(f"   • Final Train Loss: {final_train_loss:.6f}")
+        print(f"   • Final Test Loss: {final_test_loss:.6f}")
+        print(f"\n🎯 Final Silhouette Scores (Latent Space Quality):")
+        if final_train_silhouette is not None:
+            print(f"   • Training Data: {final_train_silhouette:.4f}")
+        else:
+            print(f"   • Training Data: N/A (insufficient classes)")
+        if final_test_silhouette is not None:
+            print(f"   • Test Data: {final_test_silhouette:.4f}")
+        else:
+            print(f"   • Test Data: N/A (insufficient classes)")
+        print("="*70)
+        print("✅ Experiment Complete!")
+        print("="*70 + "\n")
         
         # Complete history
         history.update({
@@ -392,31 +494,36 @@ class ExperimentRunner:
             # Show training reconstructions
             self._show_reconstructions(
                 train_view_data, train_decoded, train_view_labels, class_names,
-                f'Epoch {epoch}, Step {step} - Train: Original vs. Reconstructed'
+                f'Training Progress - Epoch {epoch}, Step {step} - Train: Original vs. Reconstructed'
             )
             
             # Show test reconstructions
             self._show_reconstructions(
                 view_data, test_decoded, view_labels, class_names,
-                f'Epoch {epoch}, Step {step} - Test: Original vs. Reconstructed'
+                f'Training Progress - Epoch {epoch}, Step {step} - Test: Original vs. Reconstructed'
             )
             
             # Visualize latent space and calculate silhouette scores
-            results = visualize_latent_space(
-                model, train_data_tensor, train_labels_tensor, test_data, test_labels,
-                class_names=class_names, device=self.device, max_samples=500, perplexity=30
-            )
+            # Extract latent representations
+            encoded_train, _ = model(train_data_tensor.to(self.device))
+            encoded_test, _ = model(test_data.to(self.device))
             
-            # Extract and store silhouette scores
-            if calculate_train_silhouette and 'train' in results and len(results['train']) >= 3:
-                _, _, train_score = results['train']
-                if train_score is not None:
-                    history['train_silhouette_scores'].append(train_score)
+            # Flatten latent vectors for visualization
+            train_latent = encoded_train.view(encoded_train.size(0), -1).cpu()
+            test_latent = encoded_test.view(encoded_test.size(0), -1).cpu()
             
-            if calculate_test_silhouette and 'test' in results and len(results['test']) >= 3:
-                _, _, test_score = results['test']
-                if test_score is not None:
-                    history['test_silhouette_scores'].append(test_score)
+            # Visualize both train and test latent spaces side by side
+            try:
+                train_silhouette, test_silhouette = self.visualize_latent_space_side_by_side(
+                    train_latent, train_labels_tensor, test_latent, test_labels,
+                    class_names, f'Training Progress - Epoch {epoch}, Step {step}', 'tsne'
+                )
+                if calculate_train_silhouette and train_silhouette is not None:
+                    history['train_silhouette_scores'].append(train_silhouette)
+                if calculate_test_silhouette and test_silhouette is not None:
+                    history['test_silhouette_scores'].append(test_silhouette)
+            except Exception as e:
+                print(f"Warning: Could not visualize latent spaces: {e}")
     
     def _perform_final_evaluation(self, model, train_data_tensor, train_labels_tensor,
                                 test_data, test_labels, class_names, calculate_train_silhouette,
@@ -425,63 +532,11 @@ class ExperimentRunner:
         """Perform final evaluation and visualization."""
         print("Generating final latent space visualization and metrics")
         
-        final_train_silhouette = None
-        final_test_silhouette = None
-        
-        with torch.no_grad():
-            # Show final reconstructions if not already done
-            if not final_visualization_done:
-                _, train_decoded = model(train_view_data)
-                _, test_decoded = model(view_data)
-                
-                self._show_reconstructions(
-                    train_view_data, train_decoded, train_view_labels, class_names,
-                    'Final Results - Train: Original vs. Reconstructed'
-                )
-                
-                self._show_reconstructions(
-                    view_data, test_decoded, view_labels, class_names,
-                    'Final Results - Test: Original vs. Reconstructed'
-                )
-            
-            # Calculate final silhouette scores
-            if not final_visualization_done:
-                # Full visualization with latent space
-                results = visualize_latent_space(
-                    model, train_data_tensor, train_labels_tensor, test_data, test_labels,
-                    class_names=class_names, device=self.device, max_samples=500, perplexity=30
-                )
-                
-                if calculate_train_silhouette and 'train' in results and len(results['train']) >= 3:
-                    _, _, final_train_silhouette = results['train']
-                
-                if calculate_test_silhouette and 'test' in results and len(results['test']) >= 3:
-                    _, _, final_test_silhouette = results['test']
-            else:
-                # Just calculate metrics without showing plots again
-                if calculate_test_silhouette:
-                    encoded_test, _ = model(test_data.to(self.device))
-                    encoded_test_features = encoded_test.view(encoded_test.size(0), -1).cpu().numpy()
-                    test_labels_np = test_labels.numpy()
-                    
-                    if len(np.unique(test_labels_np)) > 1:
-                        try:
-                            final_test_silhouette = silhouette_score(encoded_test_features, test_labels_np)
-                            print(f"Final Test Silhouette Score: {final_test_silhouette:.3f}")
-                        except Exception as e:
-                            print(f"Could not calculate final test silhouette: {e}")
-                
-                if calculate_train_silhouette and train_data_tensor is not None and train_labels_tensor is not None:
-                    encoded_train, _ = model(train_data_tensor.to(self.device))
-                    encoded_train_features = encoded_train.view(encoded_train.size(0), -1).cpu().numpy()
-                    train_labels_np = train_labels_tensor.numpy()
-                    
-                    if len(np.unique(train_labels_np)) > 1:
-                        try:
-                            final_train_silhouette = silhouette_score(encoded_train_features, train_labels_np)
-                            print(f"Final Train Silhouette Score: {final_train_silhouette:.3f}")
-                        except Exception as e:
-                            print(f"Could not calculate final train silhouette: {e}")
+        # Always perform comprehensive final visualization
+        final_train_silhouette, final_test_silhouette = self.comprehensive_final_visualization(
+            model, train_view_data, train_view_labels, view_data, view_labels,
+            train_data_tensor, train_labels_tensor, test_data, test_labels, class_names
+        )
         
         return final_train_silhouette, final_test_silhouette
     
@@ -570,4 +625,178 @@ class ExperimentRunner:
             test_labels=test_labels,
             experiment_name=experiment_name,
             **training_kwargs
-        ) 
+        )
+    
+    def visualize_latent_space_side_by_side(self, train_latent, train_labels, test_latent, test_labels, 
+                                           class_names=None, epoch_info="", method='tsne'):
+        """
+        Visualize train and test latent spaces side by side with silhouette scores in titles.
+        
+        Args:
+            train_latent: Training latent representations
+            train_labels: Training labels
+            test_latent: Test latent representations  
+            test_labels: Test labels
+            class_names: List of class names
+            epoch_info: Information about current epoch for title
+            method: Dimensionality reduction method ('tsne' or 'pca')
+            
+        Returns:
+            Tuple of (train_silhouette, test_silhouette)
+        """
+        try:
+            from sklearn.manifold import TSNE
+            from sklearn.decomposition import PCA
+            from sklearn.metrics import silhouette_score
+            import matplotlib.pyplot as plt
+            import numpy as np
+            
+            # Create side-by-side subplots
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+            
+            train_silhouette = None
+            test_silhouette = None
+            
+            # Process training data
+            if len(np.unique(train_labels)) > 1:  # Need at least 2 classes for silhouette
+                if method == 'tsne':
+                    if train_latent.shape[1] > 2:
+                        tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(train_latent)-1))
+                        train_2d = tsne.fit_transform(train_latent)
+                    else:
+                        train_2d = train_latent.numpy() if hasattr(train_latent, 'numpy') else train_latent
+                else:  # PCA
+                    pca = PCA(n_components=2, random_state=42)
+                    train_2d = pca.fit_transform(train_latent)
+                
+                # Calculate silhouette score
+                train_silhouette = silhouette_score(train_latent, train_labels)
+                
+                # Plot training data
+                unique_labels = np.unique(train_labels)
+                colors = plt.cm.Set1(np.linspace(0, 1, len(unique_labels)))
+                
+                for i, label in enumerate(unique_labels):
+                    mask = train_labels == label
+                    label_name = class_names[label] if class_names and label < len(class_names) else f'Class {label}'
+                    ax1.scatter(train_2d[mask, 0], train_2d[mask, 1], 
+                              c=[colors[i]], label=label_name, alpha=0.7, s=50)
+                
+                ax1.set_title(f'{epoch_info} - Train Latent Space ({method.upper()})\nSilhouette Score: {train_silhouette:.4f}')
+                ax1.legend()
+                ax1.grid(True, alpha=0.3)
+            else:
+                ax1.text(0.5, 0.5, 'Insufficient classes\nfor visualization', 
+                        ha='center', va='center', transform=ax1.transAxes)
+                ax1.set_title(f'{epoch_info} - Train Latent Space ({method.upper()})\nSilhouette Score: N/A')
+            
+            # Process test data
+            if len(np.unique(test_labels)) > 1:  # Need at least 2 classes for silhouette
+                if method == 'tsne':
+                    if test_latent.shape[1] > 2:
+                        tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(test_latent)-1))
+                        test_2d = tsne.fit_transform(test_latent)
+                    else:
+                        test_2d = test_latent.numpy() if hasattr(test_latent, 'numpy') else test_latent
+                else:  # PCA
+                    pca = PCA(n_components=2, random_state=42)
+                    test_2d = pca.fit_transform(test_latent)
+                
+                # Calculate silhouette score
+                test_silhouette = silhouette_score(test_latent, test_labels)
+                
+                # Plot test data
+                unique_labels = np.unique(test_labels)
+                colors = plt.cm.Set1(np.linspace(0, 1, len(unique_labels)))
+                
+                for i, label in enumerate(unique_labels):
+                    mask = test_labels == label
+                    label_name = class_names[label] if class_names and label < len(class_names) else f'Class {label}'
+                    ax2.scatter(test_2d[mask, 0], test_2d[mask, 1], 
+                              c=[colors[i]], label=label_name, alpha=0.7, s=50)
+                
+                ax2.set_title(f'{epoch_info} - Test Latent Space ({method.upper()})\nSilhouette Score: {test_silhouette:.4f}')
+                ax2.legend()
+                ax2.grid(True, alpha=0.3)
+            else:
+                ax2.text(0.5, 0.5, 'Insufficient classes\nfor visualization', 
+                        ha='center', va='center', transform=ax2.transAxes)
+                ax2.set_title(f'{epoch_info} - Test Latent Space ({method.upper()})\nSilhouette Score: N/A')
+            
+            plt.tight_layout()
+            plt.show()
+            
+            return train_silhouette, test_silhouette
+            
+        except Exception as e:
+            print(f"Warning: Could not create side-by-side latent space visualization: {e}")
+            return None, None
+    
+    def comprehensive_final_visualization(self, model, train_view_data, train_view_labels, 
+                                        view_data, view_labels, train_data_tensor, train_labels_tensor,
+                                        test_data, test_labels, class_names):
+        """
+        Perform comprehensive final visualization showing both reconstructions and latent spaces.
+        
+        Args:
+            model: Trained model
+            train_view_data: Selected training data for visualization
+            train_view_labels: Labels for training visualization data
+            view_data: Selected test data for visualization
+            view_labels: Labels for test visualization data
+            train_data_tensor: Full training data tensor
+            train_labels_tensor: Full training labels tensor
+            test_data: Full test data tensor
+            test_labels: Full test labels tensor
+            class_names: List of class names
+            
+        Returns:
+            Tuple of (final_train_silhouette, final_test_silhouette)
+        """
+        print("\n" + "="*60)
+        print("📊 FINAL VISUALIZATION GENERATION")
+        print("="*60)
+        
+        with torch.no_grad():
+            # 1. Show final reconstructions
+            print("Generating final reconstruction visualizations...")
+            _, train_decoded = model(train_view_data)
+            _, test_decoded = model(view_data)
+            
+            self._show_reconstructions(
+                train_view_data, train_decoded, train_view_labels, class_names,
+                'Final Results - Training: Original vs. Reconstructed'
+            )
+            
+            self._show_reconstructions(
+                view_data, test_decoded, view_labels, class_names,
+                'Final Results - Test: Original vs. Reconstructed'
+            )
+            
+            # 2. Show final latent space visualization
+            print("Generating final latent space analysis...")
+            # Extract latent representations for final visualization
+            encoded_train, _ = model(train_data_tensor.to(self.device))
+            encoded_test, _ = model(test_data.to(self.device))
+            
+            # Flatten latent vectors
+            train_latent = encoded_train.view(encoded_train.size(0), -1).cpu()
+            test_latent = encoded_test.view(encoded_test.size(0), -1).cpu()
+            
+            # Final latent space visualization (both train and test side by side)
+            try:
+                final_train_silhouette, final_test_silhouette = self.visualize_latent_space_side_by_side(
+                    train_latent, train_labels_tensor, test_latent, test_labels,
+                    class_names, 'Final Results', 'tsne'
+                )
+                
+            except Exception as e:
+                print(f"Warning: Could not create final latent space visualization: {e}")
+                final_train_silhouette = None
+                final_test_silhouette = None
+        
+        print("="*60)
+        print("✅ FINAL VISUALIZATION COMPLETE")
+        print("="*60)
+        
+        return final_train_silhouette, final_test_silhouette 

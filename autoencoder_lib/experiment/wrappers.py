@@ -19,8 +19,8 @@ import os
 import pandas as pd
 
 from .runner import ExperimentRunner
+from ..visualization.training_viz import plot_training_curves, plot_systematic_training_curves
 from ..visualization import (
-    plot_training_curves,
     plot_performance_grid,  
     plot_latent_dimension_analysis
 )
@@ -40,10 +40,93 @@ from ..models import create_autoencoder, MODEL_ARCHITECTURES
 from ..data import generate_dataset
 from ..utils.reproducibility import set_seed, SeedContext
 from .latent_analysis import run_complete_latent_analysis
+from ..visualization.latent_viz import visualize_latent_space_2d
+from ..visualization.reconstruction_viz import visualize_reconstructions  
+
+
+def _load_or_generate_dataset(
+    dataset_config: Optional[Dict[str, Any]] = None,
+    dataset_info: Optional[Dict[str, Any]] = None,
+    dataset_path: Optional[str] = None,
+    verbose: bool = True
+) -> Dict[str, Any]:
+    """
+    Load existing dataset or generate new one based on provided parameters.
+    
+    Args:
+        dataset_config: Configuration for generating new dataset
+        dataset_info: Pre-loaded dataset info dictionary
+        dataset_path: Path to directory containing dataset_info.npy
+        verbose: Whether to print progress information
+        
+    Returns:
+        Dataset info dictionary with standardized keys
+        
+    Raises:
+        ValueError: If no valid dataset source is provided
+    """
+    # Priority order: dataset_info > dataset_path > dataset_config
+    if dataset_info is not None:
+        if verbose:
+            print("Using provided dataset_info")
+        # Ensure standardized keys
+        return _standardize_dataset_info(dataset_info, None)
+    
+    if dataset_path is not None:
+        if verbose:
+            print(f"Loading dataset from: {dataset_path}")
+        
+        dataset_info_file = Path(dataset_path) / 'dataset_info.npy'
+        if dataset_info_file.exists():
+            loaded_info = np.load(str(dataset_info_file), allow_pickle=True).item()
+            
+            # Standardize and add dataset path information
+            standardized_info = _standardize_dataset_info(loaded_info, dataset_path)
+            
+            if verbose:
+                class_names = standardized_info.get('class_names', [])
+                print(f"✅ Loaded existing dataset with {len(class_names)} classes")
+                print(f"  Classes: {class_names}")
+            return standardized_info
+        else:
+            raise FileNotFoundError(f"dataset_info.npy not found in {dataset_path}")
+    
+    if dataset_config is not None:
+        if verbose:
+            print("Generating new dataset...")
+        generated_info = generate_dataset(**dataset_config)
+        return _standardize_dataset_info(generated_info, dataset_config.get('output_dir'))
+    
+    raise ValueError("Must provide either dataset_config, dataset_info, or dataset_path")
+
+
+def _standardize_dataset_info(dataset_info: Dict[str, Any], dataset_dir: Optional[str]) -> Dict[str, Any]:
+    """
+    Standardize dataset info dictionary to ensure consistent key names.
+    
+    Args:
+        dataset_info: Raw dataset info dictionary
+        dataset_dir: Directory path where dataset is stored
+        
+    Returns:
+        Standardized dataset info dictionary
+    """
+    standardized = dataset_info.copy()
+    
+    # Handle label_names vs class_names inconsistency
+    if 'label_names' in dataset_info and 'class_names' not in dataset_info:
+        standardized['class_names'] = dataset_info['label_names']
+    elif 'class_names' in dataset_info and 'label_names' not in dataset_info:
+        standardized['label_names'] = dataset_info['class_names']
+    
+    # Ensure we have the dataset directory path for data loading
+    if dataset_dir is not None:
+        standardized['dataset_directory'] = str(dataset_dir)
+    
+    return standardized
 
 
 def run_single_experiment(
-    dataset_config: Dict[str, Any],
     architecture_name: str,
     latent_dim: int,
     learning_rate: float = 0.001,
@@ -53,13 +136,16 @@ def run_single_experiment(
     device: Optional[str] = None,
     random_seed: int = 42,
     save_model: bool = True,
-    verbose: bool = True
+    verbose: bool = True,
+    # Dataset sources (provide one of these)
+    dataset_config: Optional[Dict[str, Any]] = None,
+    dataset_info: Optional[Dict[str, Any]] = None,
+    dataset_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Run a single autoencoder experiment with specified parameters.
     
     Args:
-        dataset_config: Configuration dictionary for dataset generation
         architecture_name: Model architecture name (must be in MODEL_ARCHITECTURES)
         latent_dim: Latent space dimensionality
         learning_rate: Learning rate for training
@@ -70,6 +156,11 @@ def run_single_experiment(
         random_seed: Random seed for reproducibility
         save_model: Whether to save the trained model
         verbose: Whether to print progress information
+        
+        # Dataset sources (provide one of these):
+        dataset_config: Configuration dictionary for dataset generation
+        dataset_info: Pre-loaded dataset info dictionary  
+        dataset_path: Path to directory containing dataset_info.npy
         
     Returns:
         Dictionary containing experiment results and metrics
@@ -95,14 +186,17 @@ def run_single_experiment(
     
     try:
         with SeedContext(random_seed):
-            # Generate dataset
-            if verbose:
-                print("Generating dataset...")
-            dataset_info = generate_dataset(**dataset_config)
+            # Load or generate dataset
+            dataset_info = _load_or_generate_dataset(
+                dataset_config=dataset_config,
+                dataset_info=dataset_info,
+                dataset_path=dataset_path,
+                verbose=verbose
+            )
             
             # Prepare data loaders
             train_loader, test_data, test_labels, class_names = _prepare_data_from_dataset(
-                dataset_info, dataset_config, batch_size, device
+                dataset_info, dataset_config or {}, batch_size, device
             )
             
             # Create model
@@ -114,7 +208,7 @@ def run_single_experiment(
             input_shape = sample_batch[0].shape[1:]  # Remove batch dimension
             
             model = create_autoencoder(
-                architecture=architecture_name,
+                architecture_name=architecture_name,
                 input_shape=input_shape,
                 latent_dim=latent_dim
             ).to(device)
@@ -155,7 +249,25 @@ def run_single_experiment(
                 'training_time': history.get('training_time')
             }
             
-            # Compile results
+            # Save model separately as .pth file if requested
+            model_path = None
+            if save_model and trained_model is not None:
+                model_path = exp_dir / f'{experiment_name}_model.pth'
+                torch.save({
+                    'model_state_dict': trained_model.state_dict(),
+                    'architecture': architecture_name,
+                    'latent_dim': latent_dim,
+                    'input_shape': list(input_shape),
+                    'model_config': {
+                        'architecture_name': architecture_name,
+                        'input_shape': input_shape,
+                        'latent_dim': latent_dim
+                    }
+                }, model_path)
+                if verbose:
+                    print(f"Model saved to: {model_path}")
+            
+            # Compile results (exclude model object for JSON serialization)
             results = {
                 'experiment_name': experiment_name,
                 'architecture': architecture_name,
@@ -169,7 +281,7 @@ def run_single_experiment(
                 },
                 'history': history,
                 'metrics': metrics,
-                'model': trained_model,
+                'model_path': str(model_path) if model_path else None,  # Store path instead of model object
                 'dataset_info': {
                     'class_names': class_names,
                     'input_shape': list(input_shape),
@@ -205,12 +317,11 @@ def run_single_experiment(
             'timestamp': timestamp,
             'metrics': {},
             'history': {},
-            'model': None
+            'model_path': None
         }
 
 
 def run_systematic_experiments(
-    dataset_config: Dict[str, Any],
     architectures: List[str] = ['simple_linear', 'deeper_linear', 'convolutional', 'deeper_convolutional'],
     latent_dims: List[int] = [4, 8, 16, 32],
     learning_rates: List[float] = [0.001],
@@ -221,13 +332,16 @@ def run_systematic_experiments(
     device: Optional[str] = None,
     generate_visualizations: bool = True,
     show_plots: bool = True,
-    verbose: bool = True
+    verbose: bool = True,
+    # Dataset sources (provide one of these)
+    dataset_config: Optional[Dict[str, Any]] = None,
+    dataset_info: Optional[Dict[str, Any]] = None,
+    dataset_path: Optional[str] = None
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Run systematic experiments across multiple architectures and hyperparameters.
     
     Args:
-        dataset_config: Configuration for dataset generation
         architectures: List of architecture names to test
         latent_dims: List of latent dimensions to test
         learning_rates: List of learning rates to test
@@ -239,6 +353,11 @@ def run_systematic_experiments(
         generate_visualizations: Whether to generate comprehensive visualizations
         show_plots: Whether to display plots during generation
         verbose: Whether to print progress information
+        
+        # Dataset sources (provide one of these):
+        dataset_config: Configuration for dataset generation
+        dataset_info: Pre-loaded dataset info dictionary
+        dataset_path: Path to directory containing dataset_info.npy
         
     Returns:
         Dictionary mapping architecture names to lists of experiment results
@@ -263,7 +382,12 @@ def run_systematic_experiments(
     if verbose:
         print("📊 Preparing dataset...")
     
-    dataset_info = generate_dataset(**dataset_config)
+    dataset_info = _load_or_generate_dataset(
+        dataset_config=dataset_config,
+        dataset_info=dataset_info,
+        dataset_path=dataset_path,
+        verbose=verbose
+    )
     
     # Initialize results dictionary
     all_results = {arch: [] for arch in architectures}
@@ -286,7 +410,6 @@ def run_systematic_experiments(
                 # Run single experiment
                 with SeedContext(random_seed):
                     experiment_result = run_single_experiment(
-                        dataset_config=dataset_config,
                         architecture_name=architecture,
                         latent_dim=latent_dim,
                         learning_rate=learning_rate,
@@ -294,7 +417,8 @@ def run_systematic_experiments(
                         batch_size=batch_size,
                         output_dir=output_dir,
                         device=device,
-                        verbose=False  # Suppress individual experiment output
+                        verbose=False,  # Suppress individual experiment output
+                        dataset_info=dataset_info  # Pass the shared dataset
                     )
                 
                 # Store result with additional metadata
@@ -307,18 +431,13 @@ def run_systematic_experiments(
                     'batch_size': batch_size,
                     'metrics': experiment_result['metrics'],
                     'history': experiment_result['history'],
-                    'model': experiment_result['model']
+                    'model_path': experiment_result['model_path']
                 }
                 
                 all_results[architecture].append(result_entry)
                 
-                # Optional: Generate individual loss curves using core visualization
-                if generate_visualizations and verbose:
-                    # Use core visualization function instead of duplicate
-                    plot_training_curves(
-                        history=experiment_result['history'],
-                        save_path=f"{output_dir}/{experiment_result['experiment_name']}_training_curves.png" if output_dir else None
-                    )
+                # Individual training curves are no longer plotted here
+                # All visualizations will be generated at the end
     
     if verbose:
         print(f"\n✅ All {total_experiments} experiments completed!")
@@ -328,6 +447,16 @@ def run_systematic_experiments(
     if generate_visualizations:
         if verbose:
             print("\n🎨 Generating comprehensive visualization report...")
+        
+        # NEW: Generate systematic training curves by architecture
+        if verbose:
+            print("\n📈 Generating systematic training curves by architecture...")
+        
+        training_curves_path = f"{output_dir}/systematic_training_curves.png" if output_dir else None
+        plot_systematic_training_curves(
+            systematic_results=all_results,
+            save_path=training_curves_path
+        )
         
         # Use the refactored visualization functions 
         visualization_files = generate_comprehensive_report(
@@ -455,13 +584,13 @@ def run_systematic_experiments(
     # Save complete results to JSON
     results_path = Path(output_dir) / f"systematic_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     
-    # Prepare serializable results (remove model objects)
+    # Prepare serializable results (exclude model objects and use _make_json_serializable)
     serializable_results = {}
     for arch, results in all_results.items():
         serializable_results[arch] = []
         for result in results:
-            serializable_result = result.copy()
-            del serializable_result['model']  # Remove non-serializable model object
+            # Use the helper function to properly handle serialization
+            serializable_result = _make_json_serializable(result)
             serializable_results[arch].append(serializable_result)
     
     with open(results_path, 'w') as f:
@@ -588,15 +717,26 @@ def _prepare_data_from_dataset(
     from PIL import Image
     import os
     
-    output_dir = dataset_config['output_dir']
-    class_names = dataset_info['label_names']
+    # Get dataset directory from dataset_info (more reliable than dataset_config)
+    dataset_dir = dataset_info.get('dataset_directory')
+    if dataset_dir is None:
+        # Fallback to dataset_config if available
+        dataset_dir = dataset_config.get('output_dir')
+    
+    if dataset_dir is None:
+        raise ValueError("No dataset directory found in dataset_info or dataset_config")
+    
+    class_names = dataset_info.get('class_names', dataset_info.get('label_names', []))
+    
+    if not class_names:
+        raise ValueError("No class names found in dataset_info")
     
     # Load training and test data
     train_data, train_labels = [], []
     test_data, test_labels = [], []
     
     for class_idx, class_name in enumerate(class_names):
-        class_dir = Path(output_dir) / class_name
+        class_dir = Path(dataset_dir) / class_name
         
         if class_dir.exists():
             image_files = list(class_dir.glob("*.png"))
@@ -619,6 +759,11 @@ def _prepare_data_from_dataset(
                 img_array = np.array(img, dtype=np.float32) / 255.0
                 test_data.append(img_array)
                 test_labels.append(class_idx)
+        else:
+            print(f"Warning: Class directory not found: {class_dir}")
+    
+    if not train_data:
+        raise ValueError(f"No training data found in {dataset_dir}")
     
     # Convert to tensors
     train_data = torch.tensor(np.array(train_data), dtype=torch.float32).unsqueeze(1)
@@ -710,7 +855,7 @@ def _analyze_systematic_results(successful_results: List[Dict[str, Any]]) -> Dic
 def _save_results_to_json(data: Dict[str, Any], filepath: Path) -> None:
     """Save results data to JSON file, handling non-serializable objects."""
     # Create a copy and handle non-serializable objects
-    serializable_data = _make_json_serializable(data)
+    serializable_data = _make_json_serializable(data.copy())
     
     with open(filepath, 'w') as f:
         json.dump(serializable_data, f, indent=2)
@@ -719,17 +864,28 @@ def _save_results_to_json(data: Dict[str, Any], filepath: Path) -> None:
 def _make_json_serializable(obj: Any) -> Any:
     """Convert objects to JSON-serializable format."""
     if isinstance(obj, dict):
-        return {key: _make_json_serializable(value) for key, value in obj.items()}
+        serializable_dict = {}
+        for key, value in obj.items():
+            # Skip PyTorch model objects entirely
+            if isinstance(value, torch.nn.Module):
+                continue
+            serializable_dict[key] = _make_json_serializable(value)
+        return serializable_dict
     elif isinstance(obj, list):
         return [_make_json_serializable(item) for item in obj]
     elif isinstance(obj, (np.ndarray, torch.Tensor)):
         return obj.tolist() if hasattr(obj, 'tolist') else str(obj)
-    elif isinstance(obj, np.integer):
+    elif isinstance(obj, (np.integer, np.int64, np.int32)):
         return int(obj)
-    elif isinstance(obj, np.floating):
+    elif isinstance(obj, (np.floating, np.float64, np.float32)):
         return float(obj)
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
     elif isinstance(obj, Path):
         return str(obj)
+    elif isinstance(obj, torch.nn.Module):
+        # Skip PyTorch models entirely
+        return None
     else:
         return obj 
 

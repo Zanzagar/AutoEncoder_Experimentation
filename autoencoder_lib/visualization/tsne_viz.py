@@ -18,150 +18,154 @@ import os
 import time
 from typing import Dict, List, Tuple, Optional, Union, Any
 
+# Import data loading utility
+from ..data.layered_geological import load_layered_dataset
+
 
 def visualize_raw_data_tsne(
     dataset_info: Optional[Dict] = None,
     dataset_path: Optional[str] = None,
     random_state: int = 42,
     perplexity: Optional[int] = None,
-    n_iter: int = 1000,
+    max_iter: int = 1000,
     max_samples: Optional[int] = None,
     figure_size: Tuple[int, int] = (12, 10)
 ) -> Tuple[np.ndarray, np.ndarray, float]:
     """
-    Create a t-SNE visualization of raw image data.
+    Visualize raw dataset using t-SNE.
     
     Args:
-        dataset_info: Dataset information dictionary (alternative to dataset_path)
-        dataset_path: Path to the dataset info file
+        dataset_info: Pre-loaded dataset info dictionary
+        dataset_path: Path to dataset (alternative to dataset_info)
         random_state: Random seed for reproducibility
-        perplexity: Perplexity parameter for t-SNE (auto-determined if None)
-        n_iter: Number of iterations for t-SNE
-        max_samples: Maximum number of samples to use (None for all)
-        figure_size: Size of the figure to display
+        perplexity: t-SNE perplexity parameter (auto-calculated if None)
+        max_iter: Number of t-SNE iterations
+        max_samples: Maximum samples to use (for performance)
+        figure_size: Size of the figure
         
     Returns:
         Tuple of (t-SNE embedding, labels, silhouette score)
     """
-    print("Loading dataset...")
+    print(f"📊 Visualizing raw dataset with t-SNE...")
     
-    # Load dataset info
-    if dataset_info is not None:
-        pass  # Use provided dataset_info
-    elif dataset_path is not None:
-        if not os.path.exists(dataset_path):
-            raise FileNotFoundError(f"Dataset not found at {dataset_path}")
-        dataset_info = np.load(dataset_path, allow_pickle=True).item()
+    # Load dataset info if not provided
+    if dataset_info is None:
+        if dataset_path is None:
+            raise ValueError("Either dataset_info or dataset_path must be provided")
+        dataset_info = load_layered_dataset(dataset_path)
+    
+    # Extract data from the dataset structure
+    filenames = dataset_info['filenames']
+    labels = dataset_info['labels']
+    class_names = dataset_info.get('label_names', dataset_info.get('class_names', None))
+    
+    n_total_samples = len(filenames)
+    
+    # Limit samples if specified
+    if max_samples and n_total_samples > max_samples:
+        indices = np.random.RandomState(random_state).choice(n_total_samples, max_samples, replace=False)
+        selected_filenames = [filenames[i] for i in indices]
+        selected_labels = labels[indices]
+        print(f"📉 Using {max_samples} random samples from {n_total_samples} total")
     else:
-        raise ValueError("Either dataset_info or dataset_path must be provided")
+        selected_filenames = filenames
+        selected_labels = labels
     
-    # Get class names - handle both 'label_names' and 'class_names'
-    class_names = dataset_info.get('label_names', 
-                                  dataset_info.get('class_names',
-                                  [f"Class {i}" for i in range(len(np.unique(dataset_info['labels'])))]))
-    print(f"Dataset contains {len(class_names)} classes: {class_names}")
+    n_samples = len(selected_filenames)
     
-    # Determine samples to use
-    total_samples = len(dataset_info.get('filenames', dataset_info.get('images', [])))
-    if max_samples is not None and max_samples < total_samples:
-        # Randomly sample
-        np.random.seed(random_state)
-        sample_indices = np.random.choice(total_samples, max_samples, replace=False)
-        print(f"Using {max_samples} randomly selected samples out of {total_samples}")
-    else:
-        sample_indices = np.arange(total_samples)
-        print(f"Using all {total_samples} samples")
-    
-    print(f"Preparing {len(sample_indices)} images for t-SNE...")
-    
-    # Load images and flatten them
+    # Load and flatten the images
+    print(f"Loading {n_samples} images...")
     images = []
-    labels = []
+    final_labels = []
     
-    # Check if we have direct image data or need to load from files
-    if 'images' in dataset_info:
-        # Direct image data
-        for idx in sample_indices:
-            img_array = dataset_info['images'][idx]
-            if len(img_array.shape) > 2:
-                img_array = img_array.squeeze()  # Remove extra dimensions
-            images.append(img_array.flatten() / 255.0 if img_array.max() > 1 else img_array.flatten())
-            labels.append(dataset_info['labels'][idx])
-    else:
-        # Load from file paths
-        for idx in sample_indices:
-            img_path = dataset_info['filenames'][idx]
-            if not os.path.exists(img_path):
-                print(f"Warning: Image not found at {img_path}, skipping...")
-                continue
-                
-            try:
-                img = Image.open(img_path).convert('L')  # Convert to grayscale
+    for i, (filename, label) in enumerate(zip(selected_filenames, selected_labels)):
+        try:
+            # Handle both absolute and relative paths
+            if not os.path.exists(filename):
+                # Try with dataset_path as base
+                if dataset_path:
+                    filename = os.path.join(dataset_path, os.path.basename(filename))
+            
+            if os.path.exists(filename):
+                img = Image.open(filename).convert('L')  # Convert to grayscale
                 img_array = np.array(img).flatten() / 255.0  # Normalize to [0, 1]
                 images.append(img_array)
-                labels.append(dataset_info['labels'][idx])
-            except Exception as e:
-                print(f"Error loading image {img_path}: {e}")
-                continue
+                final_labels.append(label)
+            else:
+                print(f"Warning: Image {filename} not found, skipping...")
+        except Exception as e:
+            print(f"Error loading image {filename}: {e}")
+    
+    if len(images) == 0:
+        raise ValueError("No images could be loaded from the dataset")
     
     # Convert to numpy arrays
-    X = np.array(images)
-    y = np.array(labels)
+    flattened_data = np.array(images)
+    all_labels = np.array(final_labels)
+    n_samples = len(flattened_data)
     
-    print(f"Running t-SNE on {X.shape[0]} images of dimension {X.shape[1]}...")
-    print("This might take a while...")
-    
-    # Determine perplexity
+    # Auto-calculate perplexity if not provided
     if perplexity is None:
-        perplexity = min(30, len(X) - 1)
+        perplexity = min(30, n_samples - 1)
     
-    # Apply t-SNE (use max_iter instead of deprecated n_iter)
-    start_time = time.time()
-    tsne = TSNE(n_components=2, perplexity=perplexity, max_iter=n_iter, random_state=random_state)
-    X_tsne = tsne.fit_transform(X)
-    elapsed = time.time() - start_time
-    print(f"t-SNE completed in {elapsed:.2f} seconds")
+    print(f"Computing t-SNE with perplexity={perplexity} on {n_samples} samples...")
     
-    # Calculate silhouette score on t-SNE results
-    if len(np.unique(y)) > 1:  # Need at least 2 classes for silhouette score
-        silhouette = float(silhouette_score(X_tsne, y))  # Convert to Python float
-        print(f"Silhouette score on t-SNE embedding: {silhouette:.4f}")
-    else:
-        silhouette = 0.0
-        print("Only one class found, silhouette score not applicable")
+    # Apply t-SNE
+    tsne = TSNE(
+        n_components=2,
+        random_state=random_state,
+        perplexity=perplexity,
+        max_iter=max_iter,
+        init='pca',
+        learning_rate='auto'
+    )
     
-    # Visualize the t-SNE embedding
+    embedding = tsne.fit_transform(flattened_data)
+    
+    # Calculate silhouette score
+    silhouette = None
+    if len(np.unique(all_labels)) > 1:
+        try:
+            silhouette = silhouette_score(embedding, all_labels)
+            print(f"Silhouette score: {silhouette:.6f}")
+        except Exception as e:
+            print(f"Could not calculate silhouette score: {e}")
+    
+    # Create visualization
     plt.figure(figsize=figure_size)
     
-    # Plot each class with a different color
-    unique_labels = np.unique(y)
+    unique_labels = np.unique(all_labels)
     colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_labels)))
     
     for i, label in enumerate(unique_labels):
-        mask = y == label
+        mask = all_labels == label
+        label_name = class_names[label] if class_names and label < len(class_names) else f"Class {label}"
+        
         plt.scatter(
-            X_tsne[mask, 0], X_tsne[mask, 1],
+            embedding[mask, 0], 
+            embedding[mask, 1],
             c=[colors[i]],
-            label=class_names[label] if label < len(class_names) else f"Class {label}",
+            label=label_name,
             alpha=0.7,
             s=50,
             edgecolors='none'
         )
     
-    # Add silhouette score to title
-    title = f't-SNE Visualization of Raw Image Data (n={len(X)})'
-    if silhouette > 0:
-        title += f'\nSilhouette Score: {silhouette:.4f}'
+    # Create title with data count and silhouette score
+    title_with_info = f"Raw Data t-SNE Visualization (n={n_samples})"
+    if silhouette is not None:
+        title_with_info += f"\nSilhouette Score: {silhouette:.3f}"
     
-    plt.title(title, fontsize=16)
-    plt.legend(fontsize=12)
+    plt.title(title_with_info, fontsize=14)
+    plt.legend()
     plt.grid(alpha=0.3)
     plt.xlabel('t-SNE Component 1')
     plt.ylabel('t-SNE Component 2')
+    
     plt.tight_layout()
     plt.show()
     
-    return X_tsne, y, silhouette
+    return embedding, all_labels, silhouette if silhouette is not None else 0.0
 
 
 def visualize_latent_tsne(
@@ -170,51 +174,56 @@ def visualize_latent_tsne(
     class_names: Optional[List[str]] = None,
     random_state: int = 42,
     perplexity: Optional[int] = None,
-    n_iter: int = 1000,
+    max_iter: int = 1000,
     figure_size: Tuple[int, int] = (12, 10),
     title: str = "t-SNE Visualization of Latent Space"
 ) -> Tuple[np.ndarray, float]:
     """
-    Create a t-SNE visualization of latent space representations.
+    Create a t-SNE visualization of latent representations.
     
     Args:
-        latent_representations: Latent space vectors (N, latent_dim)
-        labels: Corresponding labels for each sample
+        latent_representations: Latent space representations (N, latent_dim)
+        labels: Class labels for each representation
         class_names: Names for each class
         random_state: Random seed for reproducibility
-        perplexity: Perplexity parameter for t-SNE
-        n_iter: Number of iterations for t-SNE
+        perplexity: t-SNE perplexity parameter (auto-calculated if None)
+        max_iter: Number of t-SNE iterations
         figure_size: Size of the figure
         title: Title for the plot
         
     Returns:
         Tuple of (t-SNE embedding, silhouette score)
     """
-    print(f"Running t-SNE on {latent_representations.shape[0]} latent vectors of dimension {latent_representations.shape[1]}...")
+    n_samples = len(latent_representations)
     
-    # Determine perplexity
+    # Auto-calculate perplexity if not provided
     if perplexity is None:
-        perplexity = min(30, len(latent_representations) - 1)
+        perplexity = min(30, n_samples - 1)
     
-    # Apply t-SNE (use max_iter instead of deprecated n_iter)
-    start_time = time.time()
-    tsne = TSNE(n_components=2, perplexity=perplexity, max_iter=n_iter, random_state=random_state)
-    latent_tsne = tsne.fit_transform(latent_representations)
-    elapsed = time.time() - start_time
-    print(f"t-SNE completed in {elapsed:.2f} seconds")
+    print(f"Computing t-SNE with perplexity={perplexity} on {n_samples} samples...")
+    
+    # Apply t-SNE
+    tsne = TSNE(
+        n_components=2,
+        random_state=random_state,
+        perplexity=perplexity,
+        max_iter=max_iter,
+        init='pca',
+        learning_rate='auto'
+    )
+    
+    embedding = tsne.fit_transform(latent_representations)
     
     # Calculate silhouette score
+    silhouette = None
     if len(np.unique(labels)) > 1:
-        silhouette = float(silhouette_score(latent_tsne, labels))  # Convert to Python float
-        print(f"Silhouette score on latent t-SNE embedding: {silhouette:.4f}")
-    else:
-        silhouette = 0.0
+        try:
+            silhouette = silhouette_score(embedding, labels)
+            print(f"Silhouette score: {silhouette:.6f}")
+        except Exception as e:
+            print(f"Could not calculate silhouette score: {e}")
     
-    # Create class names if not provided
-    if class_names is None:
-        class_names = [f"Class {i}" for i in sorted(np.unique(labels))]
-    
-    # Visualize
+    # Create visualization
     plt.figure(figsize=figure_size)
     
     unique_labels = np.unique(labels)
@@ -222,29 +231,33 @@ def visualize_latent_tsne(
     
     for i, label in enumerate(unique_labels):
         mask = labels == label
+        label_name = class_names[label] if class_names and label < len(class_names) else f"Class {label}"
+        
         plt.scatter(
-            latent_tsne[mask, 0], latent_tsne[mask, 1],
+            embedding[mask, 0], 
+            embedding[mask, 1],
             c=[colors[i]],
-            label=class_names[label] if label < len(class_names) else f"Class {label}",
+            label=label_name,
             alpha=0.7,
             s=50,
             edgecolors='none'
         )
     
-    # Add silhouette score to title
-    full_title = title
-    if silhouette > 0:
-        full_title += f'\nSilhouette Score: {silhouette:.4f}'
+    # Create title with data count and silhouette score
+    title_with_info = f"{title} (n={n_samples})"
+    if silhouette is not None:
+        title_with_info += f"\nSilhouette Score: {silhouette:.3f}"
     
-    plt.title(full_title, fontsize=16)
-    plt.legend(fontsize=12)
+    plt.title(title_with_info, fontsize=14)
+    plt.legend()
     plt.grid(alpha=0.3)
     plt.xlabel('t-SNE Component 1')
     plt.ylabel('t-SNE Component 2')
+    
     plt.tight_layout()
     plt.show()
     
-    return latent_tsne, silhouette
+    return embedding, silhouette if silhouette is not None else 0.0
 
 
 def compare_tsne_embeddings(
@@ -258,54 +271,34 @@ def compare_tsne_embeddings(
     Compare multiple t-SNE embeddings side by side.
     
     Args:
-        embeddings_list: List of t-SNE embeddings to compare
+        embeddings_list: List of 2D t-SNE embeddings
         labels_list: List of corresponding labels
-        titles: Titles for each embedding
-        class_names: Names for each class
+        titles: List of titles for each plot
+        class_names: List of class names for the legend
         figure_size: Size of the figure
     """
-    n_embeddings = len(embeddings_list)
+    n_plots = len(embeddings_list)
+    if n_plots == 0:
+        return
     
-    plt.figure(figsize=figure_size)
+    fig, axes = plt.subplots(1, n_plots, figsize=figure_size)
+    if n_plots == 1:
+        axes = [axes]
     
-    for i, (embedding, labels, title) in enumerate(zip(embeddings_list, labels_list, titles)):
-        plt.subplot(1, n_embeddings, i + 1)
+    for i, (embeddings, labels, base_title) in enumerate(zip(embeddings_list, labels_list, titles)):
+        # Add data count to title
+        n_samples = len(embeddings)
+        title_with_count = f"{base_title} (n={n_samples})"
         
-        # Create class names if not provided
-        if class_names is None:
-            current_class_names = [f"Class {j}" for j in sorted(np.unique(labels))]
-        else:
-            current_class_names = class_names
+        # Calculate silhouette score
+        if len(np.unique(labels)) > 1:
+            try:
+                silhouette = silhouette_score(embeddings, labels)
+                title_with_count += f"\nSilhouette Score: {silhouette:.3f}"
+            except Exception:
+                pass
         
-        unique_labels = np.unique(labels)
-        colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_labels)))
-        
-        for j, label in enumerate(unique_labels):
-            mask = labels == label
-            plt.scatter(
-                embedding[mask, 0], embedding[mask, 1],
-                c=[colors[j]],
-                label=current_class_names[label] if label < len(current_class_names) else f"Class {label}",
-                alpha=0.7,
-                s=30,
-                edgecolors='none'
-            )
-        
-        # Calculate and add silhouette score
-        if len(unique_labels) > 1:
-            silhouette = silhouette_score(embedding, labels)
-            title_with_score = f"{title}\nSilhouette: {silhouette:.3f}"
-        else:
-            title_with_score = title
-        
-        plt.title(title_with_score, fontsize=12)
-        plt.grid(alpha=0.3)
-        plt.xlabel('t-SNE Component 1')
-        plt.ylabel('t-SNE Component 2')
-        
-        # Only show legend on first subplot
-        if i == 0:
-            plt.legend(fontsize=10, bbox_to_anchor=(1.05, 1), loc='upper left')
+        plot_with_labels(embeddings, labels, class_names, title_with_count, axes[i])
     
     plt.tight_layout()
     plt.show()

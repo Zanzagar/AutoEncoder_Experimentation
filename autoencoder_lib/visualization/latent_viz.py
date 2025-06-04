@@ -44,6 +44,9 @@ def visualize_latent_space_2d(
     if isinstance(labels, torch.Tensor):
         labels = labels.detach().cpu().numpy()
     
+    # Get data count for title
+    n_samples = len(latent_vectors)
+    
     # Apply dimensionality reduction
     if method.lower() == 'tsne':
         reducer = TSNE(n_components=2, random_state=42, perplexity=min(30, len(latent_vectors)-1))
@@ -76,7 +79,7 @@ def visualize_latent_space_2d(
                    c=[colors[i]], label=label_name, alpha=0.7, s=50)
     
     if title is None:
-        title = f'{method_name} Visualization of Latent Space\nSilhouette Score: {silhouette:.4f}'
+        title = f'{method_name} Visualization of Latent Space (n={n_samples})\nSilhouette Score: {silhouette:.4f}'
     
     plt.title(title, fontsize=14)
     plt.legend()

@@ -17,13 +17,14 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 from torch.utils.data import DataLoader, TensorDataset
 
 from .runner import ExperimentRunner
-from .visualization import (
-    plot_loss_curves, 
-    plot_metrics_vs_latent_dim,
-    create_performance_heatmaps,
+from ..visualization import (
+    plot_training_curves,
+    plot_performance_grid,  
+    plot_latent_dimension_analysis
+)
+from .experiment_reporting import (
     create_comparison_tables,
     save_experiment_summary,
-    plot_architecture_comparison,
     generate_comprehensive_report
 )
 from ..models import create_autoencoder, MODEL_ARCHITECTURES
@@ -301,12 +302,12 @@ def run_systematic_experiments(
                 
                 all_results[architecture].append(result_entry)
                 
-                # Optional: Generate individual loss curves
+                # Optional: Generate individual loss curves using core visualization
                 if generate_visualizations and verbose:
-                    plot_loss_curves(
-                        experiment_result, 
-                        save_dir=output_dir,
-                        show_plots=False  # Don't show individual plots to avoid clutter
+                    # Use core visualization function instead of duplicate
+                    plot_training_curves(
+                        history=experiment_result['history'],
+                        save_path=f"{output_dir}/{experiment_result['experiment_name']}_training_curves.png" if output_dir else None
                     )
     
     if verbose:
@@ -318,7 +319,7 @@ def run_systematic_experiments(
         if verbose:
             print("\n🎨 Generating comprehensive visualization report...")
         
-        # Use the visualization functions to match original notebook output
+        # Use the refactored visualization functions 
         visualization_files = generate_comprehensive_report(
             systematic_results=all_results,
             output_dir=output_dir,

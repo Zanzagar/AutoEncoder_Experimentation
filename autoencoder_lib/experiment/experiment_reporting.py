@@ -18,15 +18,9 @@ from datetime import datetime
 
 # Import core visualization functions
 from ..visualization.training_viz import (
-    plot_performance_heatmap,
-    plot_multiple_performance_heatmaps,
-    plot_3d_performance_surface,
-    plot_performance_contour,
-    plot_performance_grid,
     plot_latent_dimension_analysis
 )
 from ..visualization.reconstruction_viz import visualize_reconstructions as plot_reconstruction_comparison
-
 
 def create_comparison_tables(systematic_results: Dict[str, List[Dict[str, Any]]]) -> pd.DataFrame:
     """
@@ -141,23 +135,7 @@ def generate_comprehensive_report(systematic_results: Dict[str, List[Dict[str, A
     
     generated_files = {}
     
-    # 1. Create performance grid using core function
-    print("🔥 Creating performance analysis...")
-    # Prepare data for core performance grid function
-    performance_data = {}
-    for architecture, results in systematic_results.items():
-        for result in results:
-            model_key = f"{architecture}_latent{result['latent_dim']}"
-            performance_data[model_key] = result['metrics']
-    
-    # Use core visualization function
-    save_path = Path(output_dir) / f"performance_grid_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-    plot_performance_grid(
-        results=performance_data,
-        save_path=str(save_path)
-    )
-    
-    # 2. Create latent dimension analysis using core function  
+    # 1. Create latent dimension analysis using core function  
     print("🏗️ Creating latent dimension analysis...")
     for architecture, results in systematic_results.items():
         # Organize data by latent dimension
@@ -183,11 +161,11 @@ def generate_comprehensive_report(systematic_results: Dict[str, List[Dict[str, A
                 metrics_dict=metrics_dict
             )
     
-    # 3. Create comparison tables
+    # 2. Create comparison tables
     print("📋 Creating comparison tables...")
     df = create_comparison_tables(systematic_results)
     
-    # 4. Save experiment summary
+    # 3. Save experiment summary
     print("💾 Saving experiment summary...")
     csv_path = save_experiment_summary(systematic_results, save_dir=output_dir)
     generated_files['summary_csv'] = csv_path
@@ -379,124 +357,6 @@ def create_reconstruction_visualization_batch(
     
     print(f"✅ Created {len(visualization_paths)} reconstruction visualizations")
     return visualization_paths
-
-
-def create_performance_heatmaps(
-    results_dict: Dict[str, Dict],
-    metrics: List[str] = ['final_train_loss', 'final_test_loss', 'train_silhouette', 'test_silhouette'],
-    save_path: Optional[str] = None,
-    architecture_names: Optional[List[str]] = None,
-    latent_dimensions: Optional[List[int]] = None
-) -> Dict[str, Any]:
-    """
-    Orchestrate creation of performance heatmaps by analyzing experiment data
-    and calling core visualization functions.
-    
-    Args:
-        results_dict: Dictionary containing experiment results
-        metrics: List of metrics to analyze
-        save_path: Path to save the visualization
-        architecture_names: List of architecture names
-        latent_dimensions: List of latent dimensions tested
-        
-    Returns:
-        Dictionary containing analysis results and visualization metadata
-    """
-    print("📈 Creating performance heatmaps...")
-    
-    # Extract unique architectures and latent dimensions from data if not provided
-    if architecture_names is None:
-        architecture_names = list(set(
-            exp_data.get('config', {}).get('architecture', 'unknown')
-            for exp_data in results_dict.values()
-        ))
-        
-    if latent_dimensions is None:
-        latent_dimensions = sorted(list(set(
-            exp_data.get('config', {}).get('latent_dim', 0)
-            for exp_data in results_dict.values()
-            if exp_data.get('config', {}).get('latent_dim', 0) > 0
-        )))
-    
-    # Prepare data matrices for each metric
-    heatmap_data_dict = {}
-    
-    for metric in metrics:
-        # Initialize matrix with NaN
-        matrix = np.full((len(architecture_names), len(latent_dimensions)), np.nan)
-        
-        # Fill matrix with experimental data
-        for exp_name, exp_data in results_dict.items():
-            config = exp_data.get('config', {})
-            arch = config.get('architecture', 'unknown')
-            latent_dim = config.get('latent_dim', 0)
-            
-            if arch in architecture_names and latent_dim in latent_dimensions:
-                arch_idx = architecture_names.index(arch)
-                dim_idx = latent_dimensions.index(latent_dim)
-                
-                # Extract metric value
-                metric_value = exp_data.get(metric)
-                if metric_value is not None:
-                    matrix[arch_idx, dim_idx] = metric_value
-        
-        heatmap_data_dict[metric] = matrix
-    
-    # Generate visualization using core function
-    if len(metrics) == 1:
-        # Single heatmap
-        plot_performance_heatmap(
-            heatmap_data=heatmap_data_dict[metrics[0]],
-            row_labels=architecture_names,
-            col_labels=[str(ld) for ld in latent_dimensions],
-            metric_name=metrics[0],
-            save_path=save_path,
-            show_plot=True
-        )
-    else:
-        # Multiple heatmaps
-        plot_multiple_performance_heatmaps(
-            heatmap_data_dict=heatmap_data_dict,
-            row_labels=architecture_names,
-            col_labels=[str(ld) for ld in latent_dimensions],
-            save_path=save_path,
-            show_plot=True
-        )
-    
-    # Analyze results
-    analysis_results = {
-        'data_coverage': {},
-        'best_configurations': {},
-        'architecture_comparison': {},
-        'latent_dimension_trends': {}
-    }
-    
-    # Calculate data coverage
-    for metric, matrix in heatmap_data_dict.items():
-        total_cells = matrix.size
-        filled_cells = np.sum(~np.isnan(matrix))
-        coverage = filled_cells / total_cells * 100
-        analysis_results['data_coverage'][metric] = {
-            'total_configurations': total_cells,
-            'tested_configurations': filled_cells,
-            'coverage_percentage': coverage
-        }
-        
-        # Find best configurations
-        if not np.isnan(matrix).all():
-            if 'loss' in metric.lower() or 'time' in metric.lower():
-                best_coords = np.unravel_index(np.nanargmin(matrix), matrix.shape)
-            else:
-                best_coords = np.unravel_index(np.nanargmax(matrix), matrix.shape)
-                
-            analysis_results['best_configurations'][metric] = {
-                'architecture': architecture_names[best_coords[0]],
-                'latent_dimension': latent_dimensions[best_coords[1]],
-                'value': matrix[best_coords]
-            }
-    
-    print(f"✅ Generated performance heatmaps for {len(metrics)} metrics")
-    return analysis_results
 
 
 def analyze_hyperparameter_sensitivity(
@@ -731,99 +591,4 @@ def identify_optimal_configurations(
             json.dump(optimal_analysis, f, indent=2, default=str)
         print(f"💾 Optimal configuration analysis saved to: {save_path}")
     
-    return optimal_analysis
-
-
-def generate_performance_surfaces(
-    results_dict: Dict[str, Dict],
-    metric_name: str = 'final_test_loss',
-    save_dir: Optional[str] = None,
-    architecture_names: Optional[List[str]] = None
-) -> bool:
-    """
-    Orchestrate generation of 3D performance surfaces by preparing data
-    and calling core visualization functions.
-    
-    Args:
-        results_dict: Dictionary containing experiment results
-        metric_name: Name of the metric to visualize
-        save_dir: Directory to save visualizations
-        architecture_names: List of architecture names for labeling
-        
-    Returns:
-        Boolean indicating success
-    """
-    print(f"🌄 Generating 3D performance surfaces for {metric_name}...")
-    
-    try:
-        # Extract data points for surface generation
-        data_points = []
-        architectures = set()
-        
-        for exp_name, exp_data in results_dict.items():
-            config = exp_data.get('config', {})
-            metric_value = exp_data.get(metric_name)
-            
-            if metric_value is not None:
-                arch = config.get('architecture', 'unknown')
-                latent_dim = config.get('latent_dim', 0)
-                
-                architectures.add(arch)
-                
-                # Convert architecture to numeric index for plotting
-                if architecture_names is None:
-                    arch_idx = hash(arch) % 10  # Simple hash for demo
-                else:
-                    arch_idx = architecture_names.index(arch) if arch in architecture_names else 0
-                
-                data_points.append({
-                    'x': arch_idx,
-                    'y': latent_dim,
-                    'z': metric_value
-                })
-        
-        if len(data_points) < 4:
-            print("❌ Insufficient data points for surface generation")
-            return False
-        
-        # Prepare architecture names
-        if architecture_names is None:
-            architecture_names = sorted(list(architectures))
-        
-        # Generate 3D surface
-        save_path = None
-        if save_dir:
-            os.makedirs(save_dir, exist_ok=True)
-            save_path = os.path.join(save_dir, f'{metric_name}_3d_surface.png')
-        
-        success = plot_3d_performance_surface(
-            data_points=data_points,
-            metric_name=metric_name,
-            x_label='Architecture',
-            y_label='Latent Dimension',
-            architecture_names=architecture_names,
-            save_path=save_path,
-            show_plot=True
-        )
-        
-        # Generate contour map as well
-        if success and save_dir:
-            contour_save_path = os.path.join(save_dir, f'{metric_name}_contour_map.png')
-            plot_performance_contour(
-                data_points=data_points,
-                metric_name=metric_name,
-                x_label='Architecture',
-                y_label='Latent Dimension',
-                architecture_names=architecture_names,
-                save_path=contour_save_path,
-                show_plot=True
-            )
-        
-        if success:
-            print(f"✅ Generated 3D performance surface for {metric_name}")
-        
-        return success
-        
-    except Exception as e:
-        print(f"❌ Error generating performance surfaces: {e}")
-        return False 
+    return optimal_analysis 

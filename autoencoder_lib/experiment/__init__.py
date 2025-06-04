@@ -26,10 +26,8 @@ from .experiment_reporting import (
     analyze_reconstruction_quality,
     generate_reconstruction_comparison_report,
     create_reconstruction_visualization_batch,
-    create_performance_heatmaps,
     analyze_hyperparameter_sensitivity,
-    identify_optimal_configurations,
-    generate_performance_surfaces
+    identify_optimal_configurations
 )
 from .latent_analysis import (
     analyze_latent_space,
@@ -75,10 +73,8 @@ __all__ = [
     'analyze_reconstruction_quality',
     'generate_reconstruction_comparison_report',
     'create_reconstruction_visualization_batch',
-    'create_performance_heatmaps',
     'analyze_hyperparameter_sensitivity',
     'identify_optimal_configurations',
-    'generate_performance_surfaces',
     
     # Latent analysis functions
     'analyze_latent_space',

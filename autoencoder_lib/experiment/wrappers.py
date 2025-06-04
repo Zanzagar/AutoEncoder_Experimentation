@@ -31,10 +31,8 @@ from .experiment_reporting import (
     analyze_reconstruction_quality,
     generate_reconstruction_comparison_report,
     create_reconstruction_visualization_batch,
-    create_performance_heatmaps,
     analyze_hyperparameter_sensitivity,
-    identify_optimal_configurations,
-    generate_performance_surfaces
+    identify_optimal_configurations
 )
 from ..models import create_autoencoder, MODEL_ARCHITECTURES
 from ..data import generate_dataset

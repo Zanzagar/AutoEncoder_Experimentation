@@ -481,4 +481,343 @@ def plot_training_efficiency(
     axes[2].grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.show() 
+    plt.show()
+
+
+def plot_performance_heatmap(heatmap_data: np.ndarray,
+                            row_labels: List[str],
+                            col_labels: List[str],
+                            metric_name: str,
+                            title: Optional[str] = None,
+                            save_path: Optional[str] = None,
+                            show_plot: bool = True,
+                            figure_size: Tuple[int, int] = (12, 8)) -> None:
+    """
+    Create a performance heatmap from data matrix.
+    
+    Args:
+        heatmap_data: 2D numpy array with performance values
+        row_labels: Labels for rows (e.g., architecture names)
+        col_labels: Labels for columns (e.g., latent dimensions)
+        metric_name: Name of the metric being visualized
+        title: Optional custom title
+        save_path: Path to save the plot
+        show_plot: Whether to display the plot
+        figure_size: Size of the figure
+    """
+    import seaborn as sns
+    
+    # Create DataFrame for seaborn
+    heatmap_df = pd.DataFrame(heatmap_data, index=row_labels, columns=col_labels)
+    
+    # Create the heatmap
+    plt.figure(figsize=figure_size)
+    
+    # Choose colormap based on metric type
+    if 'loss' in metric_name.lower() or 'time' in metric_name.lower():
+        # Lower is better - use reverse colormap
+        cmap = 'RdYlGn_r'
+        cbar_label = f'{metric_name.replace("_", " ").title()} (Lower is Better)'
+    else:
+        # Higher is better
+        cmap = 'RdYlGn'
+        cbar_label = f'{metric_name.replace("_", " ").title()} (Higher is Better)'
+    
+    # Create heatmap with annotations
+    sns.heatmap(
+        heatmap_df,
+        annot=True,
+        fmt='.4f',
+        cmap=cmap,
+        center=None,
+        square=False,
+        linewidths=0.5,
+        cbar_kws={'label': cbar_label}
+    )
+    
+    # Set title
+    if title is None:
+        title = f'Performance Heatmap: {metric_name.replace("_", " ").title()}'
+    plt.title(title, fontsize=14, pad=20)
+    plt.xlabel('Configuration', fontsize=12)
+    plt.ylabel('Architecture', fontsize=12)
+    plt.xticks(rotation=0)
+    plt.yticks(rotation=0)
+    
+    # Highlight best performance
+    if not np.isnan(heatmap_data).all():
+        if 'loss' in metric_name.lower() or 'time' in metric_name.lower():
+            best_coords = np.unravel_index(np.nanargmin(heatmap_data), heatmap_data.shape)
+        else:
+            best_coords = np.unravel_index(np.nanargmax(heatmap_data), heatmap_data.shape)
+        
+        # Add border around best cell
+        plt.gca().add_patch(plt.Rectangle(
+            (best_coords[1], best_coords[0]), 1, 1,
+            fill=False, edgecolor='black', linewidth=3
+        ))
+    
+    plt.tight_layout()
+    
+    # Save if path provided
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    
+    if show_plot:
+        plt.show()
+    plt.close()
+
+
+def plot_multiple_performance_heatmaps(heatmap_data_dict: Dict[str, np.ndarray],
+                                      row_labels: List[str],
+                                      col_labels: List[str],
+                                      save_path: Optional[str] = None,
+                                      show_plot: bool = True,
+                                      figure_size: Tuple[int, int] = (20, 16)) -> None:
+    """
+    Create multiple performance heatmaps in a single figure.
+    
+    Args:
+        heatmap_data_dict: Dictionary mapping metric names to 2D numpy arrays
+        row_labels: Labels for rows (e.g., architecture names)
+        col_labels: Labels for columns (e.g., latent dimensions)
+        save_path: Path to save the plot
+        show_plot: Whether to display the plot
+        figure_size: Size of the figure
+    """
+    import seaborn as sns
+    
+    metrics = list(heatmap_data_dict.keys())
+    if not metrics:
+        return
+    
+    fig, axes = plt.subplots(2, 2, figsize=figure_size)
+    axes = axes.flatten()
+    
+    for idx, metric in enumerate(metrics[:4]):  # Show up to 4 metrics
+        if idx >= len(axes):
+            break
+            
+        ax = axes[idx]
+        heatmap_data = heatmap_data_dict[metric]
+        
+        # Create DataFrame for seaborn
+        heatmap_df = pd.DataFrame(heatmap_data, index=row_labels, columns=col_labels)
+        
+        # Choose colormap
+        if 'loss' in metric.lower() or 'time' in metric.lower():
+            cmap = 'RdYlGn_r'
+        else:
+            cmap = 'RdYlGn'
+        
+        sns.heatmap(
+            heatmap_df,
+            annot=True,
+            fmt='.3f',
+            cmap=cmap,
+            ax=ax,
+            square=False,
+            linewidths=0.5,
+            cbar_kws={'label': metric.replace("_", " ").title()}
+        )
+        
+        ax.set_title(f'{metric.replace("_", " ").title()}', fontsize=12)
+        ax.set_xlabel('Configuration' if idx >= len(metrics) - 2 else '', fontsize=10)
+        ax.set_ylabel('Architecture' if idx % 2 == 0 else '', fontsize=10)
+    
+    # Hide unused subplots
+    for idx in range(len(metrics), len(axes)):
+        axes[idx].axis('off')
+    
+    plt.suptitle('Performance Analysis Overview', fontsize=16, y=0.98)
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    
+    if show_plot:
+        plt.show()
+    plt.close()
+
+
+def plot_3d_performance_surface(data_points: List[Dict],
+                               metric_name: str,
+                               x_label: str = 'Architecture',
+                               y_label: str = 'Parameter',
+                               architecture_names: Optional[List[str]] = None,
+                               save_path: Optional[str] = None,
+                               show_plot: bool = True,
+                               figure_size: Tuple[int, int] = (15, 10)) -> bool:
+    """
+    Generate 3D performance surface visualization from data points.
+    
+    Args:
+        data_points: List of dictionaries with 'x', 'y', 'z' keys for coordinates and values
+        metric_name: Name of the metric being visualized
+        x_label: Label for x-axis
+        y_label: Label for y-axis  
+        architecture_names: Optional list of architecture names for x-axis labels
+        save_path: Path to save the visualization
+        show_plot: Whether to display the plot
+        figure_size: Size of the figure
+        
+    Returns:
+        Boolean indicating success
+    """
+    try:
+        from mpl_toolkits.mplot3d import Axes3D
+        from scipy.interpolate import griddata
+        
+        if len(data_points) < 4:
+            print("⚠️ Insufficient data points for surface generation")
+            return False
+        
+        # Extract coordinates and values
+        x = [dp['x'] for dp in data_points]
+        y = [dp['y'] for dp in data_points]
+        z = [dp['z'] for dp in data_points]
+        
+        # Create interpolation grid
+        x_range = np.linspace(min(x), max(x), max(len(set(x)), 3))
+        y_range = np.linspace(min(y), max(y), 20)
+        X, Y = np.meshgrid(x_range, y_range)
+        
+        # Interpolate surface
+        Z = griddata((x, y), z, (X, Y), method='cubic', fill_value=np.nan)
+        
+        # Create 3D surface plot
+        fig = plt.figure(figsize=figure_size)
+        ax = fig.add_subplot(111, projection='3d')
+        
+        # Plot surface
+        surf = ax.plot_surface(X, Y, Z, cmap='viridis', alpha=0.8, 
+                              linewidth=0, antialiased=True)
+        
+        # Plot original data points
+        ax.scatter(x, y, z, c='red', s=50, alpha=1, label='Data Points')
+        
+        # Customize plot
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.set_zlabel(metric_name.replace('_', ' ').title())
+        ax.set_title(f'Performance Surface: {metric_name.replace("_", " ").title()}', pad=20)
+        
+        # Set architecture labels if provided
+        if architecture_names and x_label.lower() == 'architecture':
+            ax.set_xticks(range(len(architecture_names)))
+            ax.set_xticklabels(architecture_names, rotation=45, ha='right')
+        
+        # Add colorbar
+        fig.colorbar(surf, shrink=0.5, aspect=5, 
+                    label=metric_name.replace('_', ' ').title())
+        
+        # Add legend
+        ax.legend()
+        
+        plt.tight_layout()
+        
+        # Save if path provided
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        
+        if show_plot:
+            plt.show()
+        plt.close()
+        
+        return True
+        
+    except ImportError as e:
+        print(f"⚠️ 3D plotting requirements not available: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ Error generating 3D surface: {e}")
+        return False
+
+
+def plot_performance_contour(data_points: List[Dict],
+                            metric_name: str,
+                            x_label: str = 'Architecture',
+                            y_label: str = 'Parameter',
+                            architecture_names: Optional[List[str]] = None,
+                            save_path: Optional[str] = None,
+                            show_plot: bool = True,
+                            figure_size: Tuple[int, int] = (12, 8)) -> bool:
+    """
+    Generate performance contour map from data points.
+    
+    Args:
+        data_points: List of dictionaries with 'x', 'y', 'z' keys for coordinates and values
+        metric_name: Name of the metric being visualized
+        x_label: Label for x-axis
+        y_label: Label for y-axis
+        architecture_names: Optional list of architecture names for x-axis labels
+        save_path: Path to save the visualization
+        show_plot: Whether to display the plot
+        figure_size: Size of the figure
+        
+    Returns:
+        Boolean indicating success
+    """
+    try:
+        from scipy.interpolate import griddata
+        
+        if len(data_points) < 4:
+            print("⚠️ Insufficient data points for contour generation")
+            return False
+        
+        # Extract coordinates and values
+        x = [dp['x'] for dp in data_points]
+        y = [dp['y'] for dp in data_points]
+        z = [dp['z'] for dp in data_points]
+        
+        # Create interpolation grid
+        x_range = np.linspace(min(x), max(x), max(len(set(x)), 3))
+        y_range = np.linspace(min(y), max(y), 20)
+        X, Y = np.meshgrid(x_range, y_range)
+        
+        # Interpolate surface
+        Z = griddata((x, y), z, (X, Y), method='cubic', fill_value=np.nan)
+        
+        # Create contour plot
+        fig, ax = plt.subplots(figsize=figure_size)
+        
+        # Create contour plot
+        contour = ax.contourf(X, Y, Z, levels=20, cmap='viridis', alpha=0.8)
+        contour_lines = ax.contour(X, Y, Z, levels=20, colors='black', alpha=0.4, linewidths=0.5)
+        
+        # Plot original data points
+        ax.scatter(x, y, c=z, s=100, edgecolors='white', linewidth=2, 
+                  cmap='viridis', label='Data Points')
+        
+        # Add colorbar
+        cbar = plt.colorbar(contour)
+        cbar.set_label(metric_name.replace('_', ' ').title())
+        
+        # Customize plot
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.set_title(f'Performance Contour Map: {metric_name.replace("_", " ").title()}')
+        
+        # Set architecture labels if provided
+        if architecture_names and x_label.lower() == 'architecture':
+            ax.set_xticks(range(len(architecture_names)))
+            ax.set_xticklabels(architecture_names, rotation=45, ha='right')
+        
+        plt.tight_layout()
+        
+        # Save if path provided
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        
+        if show_plot:
+            plt.show()
+        plt.close()
+        
+        return True
+        
+    except ImportError as e:
+        print(f"⚠️ Contour plotting requirements not available: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ Error generating contour plot: {e}")
+        return False 

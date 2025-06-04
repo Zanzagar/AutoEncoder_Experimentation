@@ -39,7 +39,11 @@ from .training_viz import (
     plot_performance_grid,
     plot_latent_dimension_analysis,
     plot_convergence_analysis,
-    plot_training_efficiency
+    plot_training_efficiency,
+    plot_performance_heatmap,
+    plot_multiple_performance_heatmaps,
+    plot_3d_performance_surface,
+    plot_performance_contour
 )
 
 # Reconstruction visualization
@@ -81,6 +85,10 @@ __all__ = [
     'plot_latent_dimension_analysis',
     'plot_convergence_analysis',
     'plot_training_efficiency',
+    'plot_performance_heatmap',
+    'plot_multiple_performance_heatmaps',
+    'plot_3d_performance_surface',
+    'plot_performance_contour',
     
     # Reconstruction visualization
     'visualize_reconstructions',

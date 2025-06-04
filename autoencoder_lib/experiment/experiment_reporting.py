@@ -6,25 +6,24 @@ These functions handle experiment result aggregation, comparison tables, and com
 reporting that goes beyond individual training visualizations.
 """
 
+import os
+import json
 import numpy as np
 import pandas as pd
-import json
+import csv
+import torch
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-import csv
-import torch
 
-# Import core visualization functions that we'll orchestrate
-from ..visualization import (
-    plot_training_curves,
-    plot_performance_grid,
-    plot_latent_dimension_analysis,
-    visualize_reconstructions,
-    plot_reconstruction_loss_grid,
-    compare_reconstruction_quality,
-    plot_reconstruction_error_heatmap
+# Import core visualization functions
+from ..visualization.training_viz import (
+    plot_performance_heatmap,
+    plot_multiple_performance_heatmaps,
+    plot_3d_performance_surface,
+    plot_performance_contour
 )
+from ..visualization.reconstruction_viz import visualize_reconstructions as plot_reconstruction_comparison
 
 
 def create_comparison_tables(systematic_results: Dict[str, List[Dict[str, Any]]]) -> pd.DataFrame:
@@ -209,873 +208,632 @@ def generate_comprehensive_report(systematic_results: Dict[str, List[Dict[str, A
     return generated_files 
 
 
-def analyze_reconstruction_quality(experiment_results: Dict[str, List[Dict[str, Any]]],
-                                 dataset_samples: Optional[Dict] = None,
-                                 show_best_worst: bool = True,
-                                 num_samples: int = 8) -> Dict[str, Any]:
+def analyze_reconstruction_quality(
+    results_dict: Dict[str, Dict],
+    dataset_name: str = "dataset",
+    save_dir: Optional[str] = None
+) -> Dict[str, Any]:
     """
-    Analyze reconstruction quality across different experiments using core visualization functions.
+    Analyze reconstruction quality across different experiments.
     
     Args:
-        experiment_results: Results from systematic experiments
-        dataset_samples: Optional dataset samples for reconstruction testing
-        show_best_worst: Whether to show best and worst reconstruction examples
-        num_samples: Number of samples to show in visualizations
+        results_dict: Dictionary containing experiment results
+        dataset_name: Name of the dataset being analyzed
+        save_dir: Directory to save analysis outputs
         
     Returns:
-        Dictionary with reconstruction quality analysis results
+        Dictionary containing reconstruction quality analysis
     """
-    print("\n🔍 Analyzing Reconstruction Quality...")
-    print("=" * 50)
+    print("🔍 Analyzing reconstruction quality across experiments...")
     
-    analysis_results = {
-        'best_reconstruction_model': None,
-        'worst_reconstruction_model': None,
-        'architecture_rankings': [],
-        'reconstruction_metrics': {}
+    quality_analysis = {
+        'reconstruction_scores': {},
+        'best_configurations': {},
+        'quality_trends': {}
     }
     
-    # Collect reconstruction metrics from all experiments
-    all_models = []
-    for architecture, results in experiment_results.items():
-        for result in results:
-            metrics = result['metrics']
-            model_info = {
-                'architecture': architecture,
-                'latent_dim': result['latent_dim'],
-                'model_name': result['experiment_name'],
-                'test_loss': metrics.get('final_test_loss', float('inf')),
-                'train_loss': metrics.get('final_train_loss', float('inf')),
-                'model': result.get('model'),  # If models are stored
-                'result': result
+    # Extract reconstruction data for analysis
+    reconstruction_data = {}
+    
+    for exp_name, exp_results in results_dict.items():
+        if 'reconstructions' in exp_results:
+            recon_data = exp_results['reconstructions']
+            quality_analysis['reconstruction_scores'][exp_name] = {
+                'mse_scores': recon_data.get('mse_scores', []),
+                'ssim_scores': recon_data.get('ssim_scores', []),
+                'avg_mse': np.mean(recon_data.get('mse_scores', [])) if recon_data.get('mse_scores') else None,
+                'avg_ssim': np.mean(recon_data.get('ssim_scores', [])) if recon_data.get('ssim_scores') else None
             }
-            all_models.append(model_info)
+            
+            reconstruction_data[exp_name] = recon_data
     
-    # Sort by reconstruction quality (test loss)
-    sorted_models = sorted(all_models, key=lambda x: x['test_loss'])
-    
-    # Identify best and worst models
-    if sorted_models:
-        analysis_results['best_reconstruction_model'] = sorted_models[0]
-        analysis_results['worst_reconstruction_model'] = sorted_models[-1]
+    # Identify best configurations
+    if quality_analysis['reconstruction_scores']:
+        best_mse = min(
+            [(name, data['avg_mse']) for name, data in quality_analysis['reconstruction_scores'].items() 
+             if data['avg_mse'] is not None],
+            key=lambda x: x[1],
+            default=(None, None)
+        )
         
-        print(f"🏆 Best Reconstruction: {sorted_models[0]['model_name']} (Loss: {sorted_models[0]['test_loss']:.4f})")
-        print(f"⚠️ Worst Reconstruction: {sorted_models[-1]['model_name']} (Loss: {sorted_models[-1]['test_loss']:.4f})")
+        best_ssim = max(
+            [(name, data['avg_ssim']) for name, data in quality_analysis['reconstruction_scores'].items() 
+             if data['avg_ssim'] is not None],
+            key=lambda x: x[1],
+            default=(None, None)
+        )
+        
+        quality_analysis['best_configurations'] = {
+            'best_mse': {'experiment': best_mse[0], 'score': best_mse[1]},
+            'best_ssim': {'experiment': best_ssim[0], 'score': best_ssim[1]}
+        }
     
-    # Create architecture rankings
-    arch_scores = {}
-    for model in all_models:
-        arch = model['architecture']
-        if arch not in arch_scores:
-            arch_scores[arch] = {'losses': [], 'count': 0}
-        arch_scores[arch]['losses'].append(model['test_loss'])
-        arch_scores[arch]['count'] += 1
+    # Save analysis results
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        analysis_path = os.path.join(save_dir, f'{dataset_name}_reconstruction_analysis.json')
+        with open(analysis_path, 'w') as f:
+            json.dump(quality_analysis, f, indent=2, default=str)
+        print(f"💾 Reconstruction analysis saved to: {analysis_path}")
     
-    # Calculate average scores per architecture
-    for arch, data in arch_scores.items():
-        avg_loss = np.mean(data['losses'])
-        analysis_results['architecture_rankings'].append({
-            'architecture': arch,
-            'avg_reconstruction_loss': avg_loss,
-            'model_count': data['count']
-        })
+    return quality_analysis
+
+
+def generate_reconstruction_comparison_report(
+    results_dict: Dict[str, Dict],
+    dataset_name: str = "dataset",
+    save_dir: Optional[str] = None,
+    max_comparisons: int = 4
+) -> bool:
+    """
+    Generate comprehensive reconstruction comparison visualizations.
     
-    # Sort architectures by performance
-    analysis_results['architecture_rankings'].sort(key=lambda x: x['avg_reconstruction_loss'])
+    Args:
+        results_dict: Dictionary containing experiment results
+        dataset_name: Name of the dataset
+        save_dir: Directory to save visualizations
+        max_comparisons: Maximum number of experiments to compare
+        
+    Returns:
+        Boolean indicating success
+    """
+    print("📊 Generating reconstruction comparison visualizations...")
     
-    print("\n📊 Architecture Rankings (by avg reconstruction loss):")
-    for i, arch_data in enumerate(analysis_results['architecture_rankings'], 1):
-        print(f"{i}. {arch_data['architecture']}: {arch_data['avg_reconstruction_loss']:.4f} "
-              f"(from {arch_data['model_count']} models)")
+    try:
+        # Identify experiments with reconstruction data
+        experiments_with_reconstructions = {
+            name: results for name, results in results_dict.items()
+            if 'reconstructions' in results and results['reconstructions']
+        }
+        
+        if not experiments_with_reconstructions:
+            print("❌ No reconstruction data found in experiment results")
+            return False
+        
+        # Limit to max comparisons
+        exp_names = list(experiments_with_reconstructions.keys())[:max_comparisons]
+        
+        # Generate comparison for each experiment
+        for exp_name in exp_names:
+            exp_results = experiments_with_reconstructions[exp_name]
+            recon_data = exp_results['reconstructions']
+            
+            # Prepare save path
+            save_path = None
+            if save_dir:
+                os.makedirs(save_dir, exist_ok=True)
+                save_path = os.path.join(save_dir, f'{dataset_name}_{exp_name}_reconstruction_comparison.png')
+            
+            # Use core visualization function
+            plot_reconstruction_comparison(
+                original_images=recon_data.get('original_images', []),
+                reconstructed_images=recon_data.get('reconstructed_images', []),
+                class_names=recon_data.get('class_names', []),
+                mse_scores=recon_data.get('mse_scores', []),
+                ssim_scores=recon_data.get('ssim_scores', []),
+                experiment_name=exp_name,
+                save_path=save_path
+            )
+        
+        print(f"✅ Generated reconstruction comparisons for {len(exp_names)} experiments")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error generating reconstruction comparison report: {e}")
+        return False
+
+
+def create_reconstruction_visualization_batch(
+    results_dict: Dict[str, Dict],
+    output_dir: str,
+    dataset_name: str = "dataset"
+) -> Dict[str, str]:
+    """
+    Create reconstruction visualizations for all experiments in batch.
     
+    Args:
+        results_dict: Dictionary containing experiment results
+        output_dir: Directory for output files
+        dataset_name: Name of the dataset
+        
+    Returns:
+        Dictionary mapping experiment names to visualization paths
+    """
+    print("🎨 Creating reconstruction visualization batch...")
+    
+    visualization_paths = {}
+    os.makedirs(output_dir, exist_ok=True)
+    
+    for exp_name, exp_results in results_dict.items():
+        if 'reconstructions' not in exp_results:
+            continue
+            
+        recon_data = exp_results['reconstructions']
+        
+        # Create visualization for this experiment
+        viz_path = os.path.join(output_dir, f'{dataset_name}_{exp_name}_reconstructions.png')
+        
+        success = plot_reconstruction_comparison(
+            original_images=recon_data.get('original_images', []),
+            reconstructed_images=recon_data.get('reconstructed_images', []),
+            class_names=recon_data.get('class_names', []),
+            mse_scores=recon_data.get('mse_scores', []),
+            ssim_scores=recon_data.get('ssim_scores', []),
+            experiment_name=exp_name,
+            save_path=viz_path,
+            show_plot=False
+        )
+        
+        if success:
+            visualization_paths[exp_name] = viz_path
+    
+    print(f"✅ Created {len(visualization_paths)} reconstruction visualizations")
+    return visualization_paths
+
+
+def create_performance_heatmaps(
+    results_dict: Dict[str, Dict],
+    metrics: List[str] = ['final_train_loss', 'final_test_loss', 'train_silhouette', 'test_silhouette'],
+    save_path: Optional[str] = None,
+    architecture_names: Optional[List[str]] = None,
+    latent_dimensions: Optional[List[int]] = None
+) -> Dict[str, Any]:
+    """
+    Orchestrate creation of performance heatmaps by analyzing experiment data
+    and calling core visualization functions.
+    
+    Args:
+        results_dict: Dictionary containing experiment results
+        metrics: List of metrics to analyze
+        save_path: Path to save the visualization
+        architecture_names: List of architecture names
+        latent_dimensions: List of latent dimensions tested
+        
+    Returns:
+        Dictionary containing analysis results and visualization metadata
+    """
+    print("📈 Creating performance heatmaps...")
+    
+    # Extract unique architectures and latent dimensions from data if not provided
+    if architecture_names is None:
+        architecture_names = list(set(
+            exp_data.get('config', {}).get('architecture', 'unknown')
+            for exp_data in results_dict.values()
+        ))
+        
+    if latent_dimensions is None:
+        latent_dimensions = sorted(list(set(
+            exp_data.get('config', {}).get('latent_dim', 0)
+            for exp_data in results_dict.values()
+            if exp_data.get('config', {}).get('latent_dim', 0) > 0
+        )))
+    
+    # Prepare data matrices for each metric
+    heatmap_data_dict = {}
+    
+    for metric in metrics:
+        # Initialize matrix with NaN
+        matrix = np.full((len(architecture_names), len(latent_dimensions)), np.nan)
+        
+        # Fill matrix with experimental data
+        for exp_name, exp_data in results_dict.items():
+            config = exp_data.get('config', {})
+            arch = config.get('architecture', 'unknown')
+            latent_dim = config.get('latent_dim', 0)
+            
+            if arch in architecture_names and latent_dim in latent_dimensions:
+                arch_idx = architecture_names.index(arch)
+                dim_idx = latent_dimensions.index(latent_dim)
+                
+                # Extract metric value
+                metric_value = exp_data.get(metric)
+                if metric_value is not None:
+                    matrix[arch_idx, dim_idx] = metric_value
+        
+        heatmap_data_dict[metric] = matrix
+    
+    # Generate visualization using core function
+    if len(metrics) == 1:
+        # Single heatmap
+        plot_performance_heatmap(
+            heatmap_data=heatmap_data_dict[metrics[0]],
+            row_labels=architecture_names,
+            col_labels=[str(ld) for ld in latent_dimensions],
+            metric_name=metrics[0],
+            save_path=save_path,
+            show_plot=True
+        )
+    else:
+        # Multiple heatmaps
+        plot_multiple_performance_heatmaps(
+            heatmap_data_dict=heatmap_data_dict,
+            row_labels=architecture_names,
+            col_labels=[str(ld) for ld in latent_dimensions],
+            save_path=save_path,
+            show_plot=True
+        )
+    
+    # Analyze results
+    analysis_results = {
+        'data_coverage': {},
+        'best_configurations': {},
+        'architecture_comparison': {},
+        'latent_dimension_trends': {}
+    }
+    
+    # Calculate data coverage
+    for metric, matrix in heatmap_data_dict.items():
+        total_cells = matrix.size
+        filled_cells = np.sum(~np.isnan(matrix))
+        coverage = filled_cells / total_cells * 100
+        analysis_results['data_coverage'][metric] = {
+            'total_configurations': total_cells,
+            'tested_configurations': filled_cells,
+            'coverage_percentage': coverage
+        }
+        
+        # Find best configurations
+        if not np.isnan(matrix).all():
+            if 'loss' in metric.lower() or 'time' in metric.lower():
+                best_coords = np.unravel_index(np.nanargmin(matrix), matrix.shape)
+            else:
+                best_coords = np.unravel_index(np.nanargmax(matrix), matrix.shape)
+                
+            analysis_results['best_configurations'][metric] = {
+                'architecture': architecture_names[best_coords[0]],
+                'latent_dimension': latent_dimensions[best_coords[1]],
+                'value': matrix[best_coords]
+            }
+    
+    print(f"✅ Generated performance heatmaps for {len(metrics)} metrics")
     return analysis_results
 
 
-def generate_reconstruction_comparison_report(experiment_results: Dict[str, List[Dict[str, Any]]],
-                                            dataset_samples: Optional[Dict] = None,
-                                            output_dir: Optional[str] = None,
-                                            show_visualizations: bool = True) -> Dict[str, str]:
+def analyze_hyperparameter_sensitivity(
+    results_dict: Dict[str, Dict],
+    target_metric: str = 'final_test_loss',
+    save_path: Optional[str] = None
+) -> Dict[str, Any]:
     """
-    Generate comprehensive reconstruction comparison report using core visualization functions.
+    Analyze sensitivity to different hyperparameters.
     
     Args:
-        experiment_results: Results from systematic experiments
-        dataset_samples: Optional dataset samples for reconstruction visualization
-        output_dir: Directory to save visualizations
-        show_visualizations: Whether to display plots
+        results_dict: Dictionary containing experiment results
+        target_metric: Metric to analyze sensitivity for
+        save_path: Path to save analysis results
         
     Returns:
-        Dictionary with paths to generated files
+        Dictionary containing sensitivity analysis
     """
-    print("\n🎨 Generating Reconstruction Comparison Report...")
-    print("=" * 55)
+    print(f"🔬 Analyzing hyperparameter sensitivity for {target_metric}...")
     
-    generated_files = {}
+    # Extract hyperparameter configurations and corresponding metric values
+    configurations = []
+    metric_values = []
     
-    # 1. Analyze reconstruction quality
-    quality_analysis = analyze_reconstruction_quality(experiment_results, dataset_samples)
+    for exp_name, exp_data in results_dict.items():
+        config = exp_data.get('config', {})
+        metric_value = exp_data.get(target_metric)
+        
+        if metric_value is not None:
+            configurations.append(config)
+            metric_values.append(metric_value)
     
-    # 2. If we have dataset samples and models, generate reconstruction visualizations
-    if dataset_samples and 'test_data' in dataset_samples:
-        test_data = dataset_samples['test_data']
-        test_labels = dataset_samples.get('test_labels')
-        class_names = dataset_samples.get('class_names')
-        
-        # Get models for comparison (best, worst, and a few in between)
-        models_to_compare = []
-        model_names_to_compare = []
-        
-        # Add best model
-        if quality_analysis['best_reconstruction_model'] and quality_analysis['best_reconstruction_model'].get('model'):
-            models_to_compare.append(quality_analysis['best_reconstruction_model']['model'])
-            model_names_to_compare.append(f"Best: {quality_analysis['best_reconstruction_model']['model_name']}")
-        
-        # Add worst model
-        if quality_analysis['worst_reconstruction_model'] and quality_analysis['worst_reconstruction_model'].get('model'):
-            models_to_compare.append(quality_analysis['worst_reconstruction_model']['model'])
-            model_names_to_compare.append(f"Worst: {quality_analysis['worst_reconstruction_model']['model_name']}")
-        
-        # Generate comparison visualizations using core functions
-        if models_to_compare and len(models_to_compare) > 1:
-            print("🔄 Generating model reconstruction comparisons...")
-            
-            # Select a few representative samples for visualization
-            num_samples = min(8, len(test_data))
-            sample_indices = np.linspace(0, len(test_data) - 1, num_samples, dtype=int)
-            
-            for sample_idx in sample_indices:
-                # Get reconstructions from each model
-                reconstructions_list = []
-                for model in models_to_compare:
-                    model.eval()
-                    with torch.no_grad():
-                        sample_input = test_data[sample_idx:sample_idx+1]
-                        if torch.cuda.is_available():
-                            sample_input = sample_input.cuda()
-                            model = model.cuda()
-                        _, reconstruction = model(sample_input)
-                        reconstructions_list.append(reconstruction.cpu())
-                
-                # Use core visualization function
-                compare_reconstruction_quality(
-                    originals=test_data[sample_idx:sample_idx+1],
-                    reconstructions_list=reconstructions_list,
-                    model_names=model_names_to_compare,
-                    sample_idx=0,
-                    figure_size=(15, 5)
-                )
+    if not configurations:
+        print(f"❌ No data found for metric: {target_metric}")
+        return {}
     
-    # 3. Generate reconstruction loss analysis across latent dimensions
-    print("📈 Generating reconstruction loss analysis...")
-    for architecture in experiment_results.keys():
-        arch_results = experiment_results[architecture]
-        if len(arch_results) > 1:  # Only if we have multiple latent dimensions
-            
-            # Sort by latent dimension
-            sorted_results = sorted(arch_results, key=lambda x: x['latent_dim'])
-            
-            latent_dims = [r['latent_dim'] for r in sorted_results]
-            reconstruction_losses = [r['metrics'].get('final_test_loss', 0) for r in sorted_results]
-            
-            # Plot reconstruction loss vs latent dimension
-            import matplotlib.pyplot as plt
-            plt.figure(figsize=(10, 6))
-            plt.plot(latent_dims, reconstruction_losses, marker='o', linewidth=2, markersize=8)
-            plt.xlabel('Latent Dimension')
-            plt.ylabel('Reconstruction Loss (Test)')
-            plt.title(f'Reconstruction Quality vs Latent Dimension: {architecture}')
-            plt.grid(True, alpha=0.3)
-            
-            # Save if output directory provided
-            if output_dir:
-                save_path = Path(output_dir) / f'reconstruction_analysis_{architecture}.png'
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                generated_files[f'reconstruction_analysis_{architecture}'] = str(save_path)
-            
-            if show_visualizations:
-                plt.show()
-            plt.close()
-    
-    print("✅ Reconstruction comparison report complete!")
-    
-    return generated_files
-
-
-def create_reconstruction_visualization_batch(models: List,
-                                            model_names: List[str],
-                                            test_data,
-                                            test_labels=None,
-                                            class_names=None,
-                                            num_samples: int = 8,
-                                            output_dir: Optional[str] = None) -> List[str]:
-    """
-    Create batch reconstruction visualizations using core visualization functions.
-    
-    Args:
-        models: List of trained models
-        model_names: Names corresponding to each model
-        test_data: Test dataset for reconstruction
-        test_labels: Optional test labels
-        class_names: Optional class names
-        num_samples: Number of samples to visualize
-        output_dir: Optional directory to save visualizations
-        
-    Returns:
-        List of paths to generated visualization files
-    """
-    import torch
-    
-    print(f"\n🖼️ Creating reconstruction visualizations for {len(models)} models...")
-    
-    generated_files = []
-    
-    # Prepare test samples
-    num_samples = min(num_samples, len(test_data))
-    sample_indices = np.linspace(0, len(test_data) - 1, num_samples, dtype=int)
-    
-    for i, (model, model_name) in enumerate(zip(models, model_names)):
-        print(f"📸 Processing model {i+1}/{len(models)}: {model_name}")
-        
-        model.eval()
-        with torch.no_grad():
-            # Get reconstructions for selected samples
-            test_samples = test_data[sample_indices]
-            if torch.cuda.is_available():
-                test_samples = test_samples.cuda()
-                model = model.cuda()
-            
-            _, reconstructions = model(test_samples)
-            
-            # Move back to CPU for visualization
-            test_samples = test_samples.cpu()
-            reconstructions = reconstructions.cpu()
-            
-            # Prepare labels if available
-            sample_labels = test_labels[sample_indices] if test_labels is not None else None
-            
-            # Use core visualization function
-            visualize_reconstructions(
-                originals=test_samples,
-                reconstructions=reconstructions,
-                labels=sample_labels,
-                class_names=class_names,
-                num_samples=num_samples,
-                title=f"Reconstructions: {model_name}"
-            )
-            
-            # Generate reconstruction loss grid using core function
-            # Calculate individual reconstruction losses
-            mse_losses = torch.nn.functional.mse_loss(
-                reconstructions.view(reconstructions.size(0), -1),
-                test_samples.view(test_samples.size(0), -1),
-                reduction='none'
-            ).mean(dim=1)
-            
-            plot_reconstruction_loss_grid(
-                originals=test_samples,
-                reconstructions=reconstructions,
-                losses=mse_losses,
-                labels=sample_labels,
-                class_names=class_names,
-                num_samples=num_samples
-            )
-            
-            # Generate error heatmap using core function
-            plot_reconstruction_error_heatmap(
-                originals=test_samples[:4],  # Show first 4 samples
-                reconstructions=reconstructions[:4]
-            )
-    
-    return generated_files 
-
-
-def create_performance_heatmaps(experiment_results: Dict[str, List[Dict[str, Any]]],
-                                metrics: List[str] = ['final_test_loss', 'final_silhouette', 'training_time'],
-                                output_dir: Optional[str] = None,
-                                show_plots: bool = True) -> Dict[str, str]:
-    """
-    Create comprehensive performance heatmaps showing Architecture × Latent Dimension matrices.
-    
-    Args:
-        experiment_results: Results from systematic experiments
-        metrics: List of metrics to visualize in heatmaps
-        output_dir: Directory to save heatmap visualizations
-        show_plots: Whether to display plots
-        
-    Returns:
-        Dictionary with paths to generated heatmap files
-    """
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    
-    print("\n🔥 Creating Performance Heatmaps...")
-    print("=" * 45)
-    
-    generated_files = {}
-    
-    # Organize data into matrix format
-    architectures = list(experiment_results.keys())
-    all_latent_dims = set()
-    
-    # Collect all latent dimensions
-    for arch_results in experiment_results.values():
-        for result in arch_results:
-            all_latent_dims.add(result['latent_dim'])
-    
-    all_latent_dims = sorted(list(all_latent_dims))
-    
-    # Create heatmaps for each metric
-    for metric in metrics:
-        print(f"📊 Creating heatmap for: {metric}")
-        
-        # Create matrix for this metric
-        heatmap_data = np.zeros((len(architectures), len(all_latent_dims)))
-        heatmap_data.fill(np.nan)  # Start with NaN for missing values
-        
-        for i, architecture in enumerate(architectures):
-            arch_results = experiment_results[architecture]
-            for result in arch_results:
-                latent_dim = result['latent_dim']
-                j = all_latent_dims.index(latent_dim)
-                metric_value = result['metrics'].get(metric, np.nan)
-                heatmap_data[i, j] = metric_value
-        
-        # Create DataFrame for seaborn
-        heatmap_df = pd.DataFrame(
-            heatmap_data,
-            index=architectures,
-            columns=[f'{dim}D' for dim in all_latent_dims]
-        )
-        
-        # Create the heatmap
-        plt.figure(figsize=(12, 8))
-        
-        # Choose colormap based on metric type
-        if 'loss' in metric.lower() or 'time' in metric.lower():
-            # Lower is better - use reverse colormap
-            cmap = 'RdYlGn_r'
-            cbar_label = f'{metric.replace("_", " ").title()} (Lower is Better)'
-        else:
-            # Higher is better
-            cmap = 'RdYlGn'
-            cbar_label = f'{metric.replace("_", " ").title()} (Higher is Better)'
-        
-        # Create heatmap with annotations
-        sns.heatmap(
-            heatmap_df,
-            annot=True,
-            fmt='.4f',
-            cmap=cmap,
-            center=None,
-            square=False,
-            linewidths=0.5,
-            cbar_kws={'label': cbar_label}
-        )
-        
-        plt.title(f'Performance Heatmap: {metric.replace("_", " ").title()}\n'
-                  f'Architecture × Latent Dimension Analysis', fontsize=14, pad=20)
-        plt.xlabel('Latent Dimension', fontsize=12)
-        plt.ylabel('Architecture', fontsize=12)
-        plt.xticks(rotation=0)
-        plt.yticks(rotation=0)
-        
-        # Highlight best performance
-        if not np.isnan(heatmap_data).all():
-            if 'loss' in metric.lower() or 'time' in metric.lower():
-                best_coords = np.unravel_index(np.nanargmin(heatmap_data), heatmap_data.shape)
-            else:
-                best_coords = np.unravel_index(np.nanargmax(heatmap_data), heatmap_data.shape)
-            
-            # Add border around best cell
-            plt.gca().add_patch(plt.Rectangle(
-                (best_coords[1], best_coords[0]), 1, 1,
-                fill=False, edgecolor='black', linewidth=3
-            ))
-        
-        plt.tight_layout()
-        
-        # Save if output directory provided
-        if output_dir:
-            save_path = Path(output_dir) / f'performance_heatmap_{metric}.png'
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            generated_files[f'heatmap_{metric}'] = str(save_path)
-            print(f"  💾 Saved: {save_path}")
-        
-        if show_plots:
-            plt.show()
-        plt.close()
-    
-    # Create combined overview heatmap
-    if len(metrics) > 1:
-        print("📊 Creating combined performance overview...")
-        
-        fig, axes = plt.subplots(2, 2, figsize=(20, 16))
-        axes = axes.flatten()
-        
-        for idx, metric in enumerate(metrics[:4]):  # Show up to 4 metrics
-            if idx >= len(axes):
-                break
-                
-            ax = axes[idx]
-            
-            # Recreate heatmap data for this metric
-            heatmap_data = np.zeros((len(architectures), len(all_latent_dims)))
-            heatmap_data.fill(np.nan)
-            
-            for i, architecture in enumerate(architectures):
-                arch_results = experiment_results[architecture]
-                for result in arch_results:
-                    latent_dim = result['latent_dim']
-                    j = all_latent_dims.index(latent_dim)
-                    metric_value = result['metrics'].get(metric, np.nan)
-                    heatmap_data[i, j] = metric_value
-            
-            heatmap_df = pd.DataFrame(
-                heatmap_data,
-                index=architectures,
-                columns=[f'{dim}D' for dim in all_latent_dims]
-            )
-            
-            # Choose colormap
-            if 'loss' in metric.lower() or 'time' in metric.lower():
-                cmap = 'RdYlGn_r'
-            else:
-                cmap = 'RdYlGn'
-            
-            sns.heatmap(
-                heatmap_df,
-                annot=True,
-                fmt='.3f',
-                cmap=cmap,
-                ax=ax,
-                square=False,
-                linewidths=0.5,
-                cbar_kws={'label': metric.replace("_", " ").title()}
-            )
-            
-            ax.set_title(f'{metric.replace("_", " ").title()}', fontsize=12)
-            ax.set_xlabel('Latent Dimension' if idx >= len(metrics) - 2 else '', fontsize=10)
-            ax.set_ylabel('Architecture' if idx % 2 == 0 else '', fontsize=10)
-        
-        # Hide unused subplots
-        for idx in range(len(metrics), len(axes)):
-            axes[idx].axis('off')
-        
-        plt.suptitle('Performance Analysis Overview: Architecture × Latent Dimension', 
-                     fontsize=16, y=0.98)
-        plt.tight_layout()
-        
-        if output_dir:
-            save_path = Path(output_dir) / 'performance_heatmaps_overview.png'
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            generated_files['heatmaps_overview'] = str(save_path)
-        
-        if show_plots:
-            plt.show()
-        plt.close()
-    
-    print("✅ Performance heatmaps complete!")
-    return generated_files
-
-
-def analyze_hyperparameter_sensitivity(experiment_results: Dict[str, List[Dict[str, Any]]],
-                                      metrics: List[str] = ['final_test_loss', 'final_silhouette'],
-                                      verbose: bool = True) -> Dict[str, Any]:
-    """
-    Analyze hyperparameter sensitivity through statistical analysis.
-    
-    Args:
-        experiment_results: Results from systematic experiments
-        metrics: List of metrics to analyze
-        verbose: Whether to print detailed analysis
-        
-    Returns:
-        Dictionary with sensitivity analysis results
-    """
-    print("\n📈 Analyzing Hyperparameter Sensitivity...")
-    print("=" * 50)
-    
-    sensitivity_results = {
-        'architecture_effects': {},
-        'latent_dim_effects': {},
-        'interaction_effects': {},
-        'parameter_importance': {}
+    # Analyze parameter importance
+    sensitivity_analysis = {
+        'parameter_ranges': {},
+        'parameter_correlations': {},
+        'optimal_ranges': {}
     }
     
-    # Organize data for analysis
-    all_data = []
-    for architecture, arch_results in experiment_results.items():
-        for result in arch_results:
-            data_point = {
-                'architecture': architecture,
-                'latent_dim': result['latent_dim'],
-                **result['metrics']
-            }
-            all_data.append(data_point)
+    # Get unique parameter names
+    all_params = set()
+    for config in configurations:
+        all_params.update(config.keys())
     
-    if not all_data:
-        print("⚠️ No data available for sensitivity analysis")
-        return sensitivity_results
-    
-    df = pd.DataFrame(all_data)
-    
-    # Analyze each metric
-    for metric in metrics:
-        if metric not in df.columns:
+    for param in all_params:
+        param_values = [config.get(param) for config in configurations]
+        
+        # Skip if parameter has only one unique value or contains non-numeric data
+        unique_values = list(set([v for v in param_values if v is not None]))
+        if len(unique_values) <= 1:
             continue
             
-        print(f"\n📊 Analyzing {metric}...")
-        
-        # Architecture effects
-        arch_effects = {}
-        architectures = df['architecture'].unique()
-        for arch in architectures:
-            arch_data = df[df['architecture'] == arch][metric].dropna()
-            if len(arch_data) > 0:
-                arch_effects[arch] = {
-                    'mean': arch_data.mean(),
-                    'std': arch_data.std(),
-                    'min': arch_data.min(),
-                    'max': arch_data.max(),
-                    'count': len(arch_data)
-                }
-        
-        sensitivity_results['architecture_effects'][metric] = arch_effects
-        
-        # Latent dimension effects
-        latent_effects = {}
-        latent_dims = sorted(df['latent_dim'].unique())
-        for latent_dim in latent_dims:
-            latent_data = df[df['latent_dim'] == latent_dim][metric].dropna()
-            if len(latent_data) > 0:
-                latent_effects[latent_dim] = {
-                    'mean': latent_data.mean(),
-                    'std': latent_data.std(),
-                    'min': latent_data.min(),
-                    'max': latent_data.max(),
-                    'count': len(latent_data)
-                }
-        
-        sensitivity_results['latent_dim_effects'][metric] = latent_effects
-        
-        # Calculate parameter importance (variance explained)
-        total_variance = df[metric].var()
-        
-        # Architecture variance
-        arch_means = [arch_effects[arch]['mean'] for arch in architectures if arch in arch_effects]
-        arch_variance = np.var(arch_means) if len(arch_means) > 1 else 0
-        arch_importance = arch_variance / total_variance if total_variance > 0 else 0
-        
-        # Latent dimension variance
-        latent_means = [latent_effects[ld]['mean'] for ld in latent_dims if ld in latent_effects]
-        latent_variance = np.var(latent_means) if len(latent_means) > 1 else 0
-        latent_importance = latent_variance / total_variance if total_variance > 0 else 0
-        
-        sensitivity_results['parameter_importance'][metric] = {
-            'architecture': arch_importance,
-            'latent_dim': latent_importance,
-            'total_explained': min(1.0, arch_importance + latent_importance)
-        }
-        
-        if verbose:
-            print(f"  Architecture Importance: {arch_importance:.3f} ({arch_importance*100:.1f}%)")
-            print(f"  Latent Dim Importance: {latent_importance:.3f} ({latent_importance*100:.1f}%)")
-            print(f"  Total Explained Variance: {sensitivity_results['parameter_importance'][metric]['total_explained']*100:.1f}%")
-    
-    # Print summary rankings
-    if verbose:
-        print(f"\n🏆 Parameter Importance Rankings:")
-        print("-" * 35)
-        for metric in metrics:
-            if metric in sensitivity_results['parameter_importance']:
-                importance = sensitivity_results['parameter_importance'][metric]
-                arch_pct = importance['architecture'] * 100
-                latent_pct = importance['latent_dim'] * 100
+        # Try to analyze numeric parameters
+        try:
+            numeric_values = [float(v) for v in param_values if v is not None]
+            if len(numeric_values) != len(param_values):
+                continue  # Skip mixed or non-numeric parameters
                 
-                print(f"\n{metric.replace('_', ' ').title()}:")
-                if arch_pct > latent_pct:
-                    print(f"  1. Architecture ({arch_pct:.1f}%)")
-                    print(f"  2. Latent Dimension ({latent_pct:.1f}%)")
+            # Calculate correlation with target metric
+            if len(numeric_values) > 1 and len(set(numeric_values)) > 1:
+                correlation = np.corrcoef(numeric_values, metric_values)[0, 1]
+                
+                sensitivity_analysis['parameter_correlations'][param] = {
+                    'correlation': correlation,
+                    'parameter_range': (min(numeric_values), max(numeric_values)),
+                    'metric_range': (min(metric_values), max(metric_values))
+                }
+                
+                # Find optimal range (values that produce best results)
+                if 'loss' in target_metric.lower():
+                    # Lower is better
+                    best_indices = np.argsort(metric_values)[:len(metric_values)//3]
                 else:
-                    print(f"  1. Latent Dimension ({latent_pct:.1f}%)")
-                    print(f"  2. Architecture ({arch_pct:.1f}%)")
+                    # Higher is better
+                    best_indices = np.argsort(metric_values)[-len(metric_values)//3:]
+                
+                optimal_param_values = [numeric_values[i] for i in best_indices]
+                sensitivity_analysis['optimal_ranges'][param] = {
+                    'optimal_min': min(optimal_param_values),
+                    'optimal_max': max(optimal_param_values),
+                    'optimal_mean': np.mean(optimal_param_values)
+                }
+                
+        except (ValueError, TypeError):
+            # Handle categorical parameters
+            value_performance = {}
+            for i, value in enumerate(param_values):
+                if value is not None:
+                    if value not in value_performance:
+                        value_performance[value] = []
+                    value_performance[value].append(metric_values[i])
+            
+            # Calculate average performance for each categorical value
+            avg_performance = {
+                value: np.mean(performances) 
+                for value, performances in value_performance.items()
+            }
+            
+            sensitivity_analysis['parameter_ranges'][param] = {
+                'categorical_performance': avg_performance,
+                'best_value': min(avg_performance.items(), key=lambda x: x[1])[0] 
+                           if 'loss' in target_metric.lower() else 
+                           max(avg_performance.items(), key=lambda x: x[1])[0]
+            }
     
-    return sensitivity_results
+    # Save analysis if path provided
+    if save_path:
+        with open(save_path, 'w') as f:
+            json.dump(sensitivity_analysis, f, indent=2, default=str)
+        print(f"💾 Sensitivity analysis saved to: {save_path}")
+    
+    return sensitivity_analysis
 
 
-def identify_optimal_configurations(experiment_results: Dict[str, List[Dict[str, Any]]],
-                                   primary_metric: str = 'final_test_loss',
-                                   minimize_metric: bool = True,
-                                   top_n: int = 5,
-                                   verbose: bool = True) -> Dict[str, Any]:
+def identify_optimal_configurations(
+    results_dict: Dict[str, Dict],
+    target_metrics: List[str] = ['final_test_loss', 'test_silhouette'],
+    save_path: Optional[str] = None
+) -> Dict[str, Any]:
     """
-    Identify optimal hyperparameter configurations with statistical confidence.
+    Identify optimal configurations based on multiple metrics.
     
     Args:
-        experiment_results: Results from systematic experiments
-        primary_metric: Primary metric for optimization
-        minimize_metric: Whether to minimize the metric (True for loss, False for accuracy)
-        top_n: Number of top configurations to return
-        verbose: Whether to print detailed analysis
+        results_dict: Dictionary containing experiment results
+        target_metrics: List of metrics to consider for optimization
+        save_path: Path to save optimization results
         
     Returns:
-        Dictionary with optimal configurations and analysis
+        Dictionary containing optimal configuration analysis
     """
-    print(f"\n🎯 Identifying Optimal Configurations...")
-    print(f"Primary Metric: {primary_metric} ({'minimize' if minimize_metric else 'maximize'})")
-    print("=" * 60)
+    print(f"🎯 Identifying optimal configurations based on: {target_metrics}")
     
-    # Collect all configurations with their performance
-    all_configs = []
-    for architecture, arch_results in experiment_results.items():
-        for result in arch_results:
-            metric_value = result['metrics'].get(primary_metric)
-            if metric_value is not None:
-                config = {
-                    'architecture': architecture,
-                    'latent_dim': result['latent_dim'],
-                    'learning_rate': result.get('learning_rate', 'N/A'),
-                    'epochs': result.get('epochs', 'N/A'),
-                    'primary_metric_value': metric_value,
-                    'all_metrics': result['metrics'],
-                    'experiment_name': result.get('experiment_name', 'unknown')
-                }
-                all_configs.append(config)
+    # Extract configurations and metric values
+    configurations = []
+    metric_data = {metric: [] for metric in target_metrics}
+    experiment_names = []
     
-    if not all_configs:
-        print("⚠️ No valid configurations found")
-        return {'error': 'No valid configurations'}
+    for exp_name, exp_data in results_dict.items():
+        config = exp_data.get('config', {})
+        
+        # Check if all target metrics are available
+        metric_values = {}
+        valid_config = True
+        
+        for metric in target_metrics:
+            value = exp_data.get(metric)
+            if value is not None:
+                metric_values[metric] = value
+            else:
+                valid_config = False
+                break
+        
+        if valid_config:
+            configurations.append(config)
+            experiment_names.append(exp_name)
+            for metric, value in metric_values.items():
+                metric_data[metric].append(value)
     
-    # Sort configurations by primary metric
-    sorted_configs = sorted(all_configs, 
-                          key=lambda x: x['primary_metric_value'], 
-                          reverse=not minimize_metric)
+    if not configurations:
+        print("❌ No configurations with all required metrics found")
+        return {}
     
-    # Get top configurations
-    top_configs = sorted_configs[:top_n]
+    # Normalize metrics (0-1 scale) and combine
+    normalized_metrics = {}
+    for metric in target_metrics:
+        values = metric_data[metric]
+        min_val, max_val = min(values), max(values)
+        
+        if max_val == min_val:
+            normalized_metrics[metric] = [0.5] * len(values)  # All equal
+        else:
+            if 'loss' in metric.lower() or 'time' in metric.lower():
+                # Lower is better - invert normalization
+                normalized_metrics[metric] = [(max_val - v) / (max_val - min_val) for v in values]
+            else:
+                # Higher is better
+                normalized_metrics[metric] = [(v - min_val) / (max_val - min_val) for v in values]
     
-    # Calculate performance statistics
-    all_values = [config['primary_metric_value'] for config in all_configs]
-    mean_performance = np.mean(all_values)
-    std_performance = np.std(all_values)
+    # Calculate composite scores (equal weighting)
+    composite_scores = []
+    for i in range(len(configurations)):
+        score = np.mean([normalized_metrics[metric][i] for metric in target_metrics])
+        composite_scores.append(score)
     
-    optimal_results = {
-        'top_configurations': top_configs,
-        'best_configuration': top_configs[0] if top_configs else None,
-        'performance_statistics': {
-            'mean': mean_performance,
-            'std': std_performance,
-            'min': min(all_values),
-            'max': max(all_values),
-            'total_configs': len(all_configs)
-        },
-        'improvement_analysis': {}
+    # Identify top configurations
+    top_indices = np.argsort(composite_scores)[-5:][::-1]  # Top 5
+    
+    optimal_analysis = {
+        'top_configurations': [],
+        'metric_statistics': {},
+        'configuration_rankings': {}
     }
     
-    # Analyze improvement over baseline (mean)
-    if top_configs:
-        best_value = top_configs[0]['primary_metric_value']
-        if minimize_metric:
-            improvement = ((mean_performance - best_value) / mean_performance) * 100
-        else:
-            improvement = ((best_value - mean_performance) / mean_performance) * 100
-        
-        optimal_results['improvement_analysis'] = {
-            'improvement_over_mean': improvement,
-            'standard_deviations_better': abs(best_value - mean_performance) / std_performance if std_performance > 0 else 0
+    # Store top configurations
+    for rank, idx in enumerate(top_indices):
+        config_info = {
+            'rank': rank + 1,
+            'experiment_name': experiment_names[idx],
+            'configuration': configurations[idx],
+            'composite_score': composite_scores[idx],
+            'metrics': {metric: metric_data[metric][idx] for metric in target_metrics},
+            'normalized_metrics': {metric: normalized_metrics[metric][idx] for metric in target_metrics}
+        }
+        optimal_analysis['top_configurations'].append(config_info)
+    
+    # Calculate metric statistics
+    for metric in target_metrics:
+        values = metric_data[metric]
+        optimal_analysis['metric_statistics'][metric] = {
+            'mean': np.mean(values),
+            'std': np.std(values),
+            'min': min(values),
+            'max': max(values),
+            'best_experiment': experiment_names[np.argmin(values) if 'loss' in metric.lower() else np.argmax(values)]
         }
     
-    if verbose:
-        print(f"🏆 Top {len(top_configs)} Configurations:")
-        print("-" * 50)
-        
-        for i, config in enumerate(top_configs, 1):
-            print(f"\n{i}. {config['architecture']} (Latent: {config['latent_dim']}D)")
-            print(f"   {primary_metric}: {config['primary_metric_value']:.6f}")
-            print(f"   Experiment: {config['experiment_name']}")
-            
-            # Show other key metrics
-            other_metrics = ['final_silhouette', 'training_time']
-            for metric in other_metrics:
-                if metric in config['all_metrics'] and metric != primary_metric:
-                    value = config['all_metrics'][metric]
-                    print(f"   {metric}: {value:.4f}")
-        
-        # Performance summary
-        best_config = optimal_results['best_configuration']
-        improvement = optimal_results['improvement_analysis']['improvement_over_mean']
-        std_better = optimal_results['improvement_analysis']['standard_deviations_better']
-        
-        print(f"\n📊 Performance Summary:")
-        print(f"   Best Performance: {best_config['primary_metric_value']:.6f}")
-        print(f"   Mean Performance: {mean_performance:.6f}")
-        print(f"   Improvement: {improvement:.2f}%")
-        print(f"   Standard Deviations Better: {std_better:.2f}σ")
-        
-        # Architecture and latent dimension analysis
-        arch_counts = {}
-        latent_counts = {}
-        for config in top_configs:
-            arch = config['architecture']
-            latent = config['latent_dim']
-            arch_counts[arch] = arch_counts.get(arch, 0) + 1
-            latent_counts[latent] = latent_counts.get(latent, 0) + 1
-        
-        print(f"\n🏗️ Top Architecture Distribution:")
-        for arch, count in sorted(arch_counts.items(), key=lambda x: x[1], reverse=True):
-            print(f"   {arch}: {count}/{top_n} ({count/top_n*100:.1f}%)")
-        
-        print(f"\n🔢 Top Latent Dimension Distribution:")
-        for latent, count in sorted(latent_counts.items(), key=lambda x: x[1], reverse=True):
-            print(f"   {latent}D: {count}/{top_n} ({count/top_n*100:.1f}%)")
+    # Store all rankings
+    sorted_indices = np.argsort(composite_scores)[::-1]
+    for rank, idx in enumerate(sorted_indices):
+        optimal_analysis['configuration_rankings'][experiment_names[idx]] = {
+            'rank': rank + 1,
+            'composite_score': composite_scores[idx]
+        }
     
-    return optimal_results
+    # Save analysis if path provided
+    if save_path:
+        with open(save_path, 'w') as f:
+            json.dump(optimal_analysis, f, indent=2, default=str)
+        print(f"💾 Optimal configuration analysis saved to: {save_path}")
+    
+    return optimal_analysis
 
 
-def generate_performance_surfaces(experiment_results: Dict[str, List[Dict[str, Any]]],
-                                 metric: str = 'final_test_loss',
-                                 output_dir: Optional[str] = None,
-                                 show_plots: bool = True) -> Optional[str]:
+def generate_performance_surfaces(
+    results_dict: Dict[str, Dict],
+    metric_name: str = 'final_test_loss',
+    save_dir: Optional[str] = None,
+    architecture_names: Optional[List[str]] = None
+) -> bool:
     """
-    Generate 3D performance surface visualizations across hyperparameter space.
+    Orchestrate generation of 3D performance surfaces by preparing data
+    and calling core visualization functions.
     
     Args:
-        experiment_results: Results from systematic experiments
-        metric: Metric to visualize as surface
-        output_dir: Directory to save visualization
-        show_plots: Whether to display plots
+        results_dict: Dictionary containing experiment results
+        metric_name: Name of the metric to visualize
+        save_dir: Directory to save visualizations
+        architecture_names: List of architecture names for labeling
         
     Returns:
-        Path to saved visualization file
+        Boolean indicating success
     """
-    print(f"\n🌄 Generating 3D Performance Surface: {metric}")
-    print("=" * 55)
+    print(f"🌄 Generating 3D performance surfaces for {metric_name}...")
     
     try:
-        import matplotlib.pyplot as plt
-        from mpl_toolkits.mplot3d import Axes3D
-        from scipy.interpolate import griddata
-        
-        # Collect data points
-        architectures = list(experiment_results.keys())
+        # Extract data points for surface generation
         data_points = []
+        architectures = set()
         
-        # Map architectures to numeric values for 3D plotting
-        arch_mapping = {arch: i for i, arch in enumerate(architectures)}
-        
-        for architecture, arch_results in experiment_results.items():
-            arch_idx = arch_mapping[architecture]
-            for result in arch_results:
-                metric_value = result['metrics'].get(metric)
-                if metric_value is not None:
-                    data_points.append({
-                        'arch_idx': arch_idx,
-                        'latent_dim': result['latent_dim'],
-                        'metric_value': metric_value,
-                        'architecture': architecture
-                    })
+        for exp_name, exp_data in results_dict.items():
+            config = exp_data.get('config', {})
+            metric_value = exp_data.get(metric_name)
+            
+            if metric_value is not None:
+                arch = config.get('architecture', 'unknown')
+                latent_dim = config.get('latent_dim', 0)
+                
+                architectures.add(arch)
+                
+                # Convert architecture to numeric index for plotting
+                if architecture_names is None:
+                    arch_idx = hash(arch) % 10  # Simple hash for demo
+                else:
+                    arch_idx = architecture_names.index(arch) if arch in architecture_names else 0
+                
+                data_points.append({
+                    'x': arch_idx,
+                    'y': latent_dim,
+                    'z': metric_value
+                })
         
         if len(data_points) < 4:
-            print("⚠️ Insufficient data points for surface generation")
-            return None
+            print("❌ Insufficient data points for surface generation")
+            return False
         
-        # Extract coordinates and values
-        x = [dp['arch_idx'] for dp in data_points]  # Architecture indices
-        y = [dp['latent_dim'] for dp in data_points]  # Latent dimensions
-        z = [dp['metric_value'] for dp in data_points]  # Metric values
+        # Prepare architecture names
+        if architecture_names is None:
+            architecture_names = sorted(list(architectures))
         
-        # Create interpolation grid
-        x_range = np.linspace(min(x), max(x), len(architectures))
-        y_range = np.linspace(min(y), max(y), 20)
-        X, Y = np.meshgrid(x_range, y_range)
-        
-        # Interpolate surface
-        Z = griddata((x, y), z, (X, Y), method='cubic', fill_value=np.nan)
-        
-        # Create 3D surface plot
-        fig = plt.figure(figsize=(15, 10))
-        ax = fig.add_subplot(111, projection='3d')
-        
-        # Plot surface
-        surf = ax.plot_surface(X, Y, Z, cmap='viridis', alpha=0.8, 
-                              linewidth=0, antialiased=True)
-        
-        # Plot original data points
-        ax.scatter(x, y, z, c='red', s=50, alpha=1, label='Experiments')
-        
-        # Customize plot
-        ax.set_xlabel('Architecture')
-        ax.set_ylabel('Latent Dimension')
-        ax.set_zlabel(metric.replace('_', ' ').title())
-        ax.set_title(f'Performance Surface: {metric.replace("_", " ").title()}\n'
-                    f'Across Architecture and Latent Dimension Space', pad=20)
-        
-        # Set architecture labels
-        ax.set_xticks(range(len(architectures)))
-        ax.set_xticklabels(architectures, rotation=45, ha='right')
-        
-        # Add colorbar
-        fig.colorbar(surf, shrink=0.5, aspect=5, 
-                    label=metric.replace('_', ' ').title())
-        
-        # Add legend
-        ax.legend()
-        
-        plt.tight_layout()
-        
-        # Save if output directory provided
+        # Generate 3D surface
         save_path = None
-        if output_dir:
-            save_path = Path(output_dir) / f'performance_surface_{metric}.png'
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"💾 Saved 3D surface: {save_path}")
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+            save_path = os.path.join(save_dir, f'{metric_name}_3d_surface.png')
         
-        if show_plots:
-            plt.show()
-        plt.close()
+        success = plot_3d_performance_surface(
+            data_points=data_points,
+            metric_name=metric_name,
+            x_label='Architecture',
+            y_label='Latent Dimension',
+            architecture_names=architecture_names,
+            save_path=save_path,
+            show_plot=True
+        )
         
-        # Create contour projection
-        fig, ax = plt.subplots(figsize=(12, 8))
+        # Generate contour map as well
+        if success and save_dir:
+            contour_save_path = os.path.join(save_dir, f'{metric_name}_contour_map.png')
+            plot_performance_contour(
+                data_points=data_points,
+                metric_name=metric_name,
+                x_label='Architecture',
+                y_label='Latent Dimension',
+                architecture_names=architecture_names,
+                save_path=contour_save_path,
+                show_plot=True
+            )
         
-        # Create contour plot
-        contour = ax.contourf(X, Y, Z, levels=20, cmap='viridis', alpha=0.8)
-        contour_lines = ax.contour(X, Y, Z, levels=20, colors='black', alpha=0.4, linewidths=0.5)
+        if success:
+            print(f"✅ Generated 3D performance surface for {metric_name}")
         
-        # Plot original data points
-        ax.scatter(x, y, c=z, s=100, edgecolors='white', linewidth=2, 
-                  cmap='viridis', label='Experiments')
+        return success
         
-        # Add colorbar
-        cbar = plt.colorbar(contour)
-        cbar.set_label(metric.replace('_', ' ').title())
-        
-        # Customize plot
-        ax.set_xlabel('Architecture Index')
-        ax.set_ylabel('Latent Dimension')
-        ax.set_title(f'Performance Contour Map: {metric.replace("_", " ").title()}')
-        
-        # Set architecture labels
-        ax.set_xticks(range(len(architectures)))
-        ax.set_xticklabels(architectures, rotation=45, ha='right')
-        
-        plt.tight_layout()
-        
-        # Save contour plot
-        if output_dir:
-            contour_path = Path(output_dir) / f'performance_contour_{metric}.png'
-            plt.savefig(contour_path, dpi=300, bbox_inches='tight')
-            print(f"💾 Saved contour map: {contour_path}")
-        
-        if show_plots:
-            plt.show()
-        plt.close()
-        
-        print("✅ Performance surface generation complete!")
-        return str(save_path) if save_path else None
-        
-    except ImportError as e:
-        print(f"⚠️ 3D plotting requirements not available: {e}")
-        return None
     except Exception as e:
-        print(f"❌ Error generating performance surface: {e}")
-        return None 
+        print(f"❌ Error generating performance surfaces: {e}")
+        return False 

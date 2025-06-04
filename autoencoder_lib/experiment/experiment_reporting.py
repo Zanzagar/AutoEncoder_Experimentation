@@ -21,7 +21,10 @@ from ..visualization.training_viz import (
     plot_performance_heatmap,
     plot_multiple_performance_heatmaps,
     plot_3d_performance_surface,
-    plot_performance_contour
+    plot_performance_contour,
+    plot_training_curves,
+    plot_performance_grid,
+    plot_latent_dimension_analysis
 )
 from ..visualization.reconstruction_viz import visualize_reconstructions as plot_reconstruction_comparison
 

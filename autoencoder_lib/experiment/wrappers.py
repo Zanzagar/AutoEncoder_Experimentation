@@ -448,6 +448,16 @@ def run_systematic_experiments(
         if verbose:
             print("\n🎨 Generating comprehensive visualization report...")
         
+        # Extract test data from dataset_info for reconstruction analysis
+        # We need to prepare data once to get test_data, test_labels, class_names
+        device_obj = torch.device(device or ('cuda' if torch.cuda.is_available() else 'cpu'))
+        _, test_data, test_labels, class_names = _prepare_data_from_dataset(
+            dataset_info=dataset_info,
+            dataset_config={},  # Empty config since we're just extracting existing data
+            batch_size=batch_size,
+            device=device_obj
+        )
+        
         # NEW: Generate systematic training curves by architecture
         if verbose:
             print("\n📈 Generating systematic training curves by architecture...")
@@ -465,100 +475,100 @@ def run_systematic_experiments(
             show_plots=show_plots
         )
         
-        # NEW: Add comprehensive reconstruction analysis
+        # # NEW: Add comprehensive reconstruction analysis (TEMPORARILY DISABLED - function signature mismatch)
+        # if verbose:
+        #     print("\n🔍 Generating reconstruction analysis report...")
+        # 
+        # # Prepare dataset samples for reconstruction analysis
+        # dataset_samples = {
+        #     'test_data': test_data,
+        #     'test_labels': test_labels,
+        #     'class_names': class_names
+        # }
+        # 
+        # # Generate reconstruction comparison report
+        # reconstruction_files = generate_reconstruction_comparison_report(
+        #     experiment_results=all_results,
+        #     dataset_samples=dataset_samples,
+        #     output_dir=output_dir,
+        #     show_visualizations=show_plots
+        # )
+        # 
+        # # Analyze reconstruction quality across all experiments
+        # reconstruction_analysis = analyze_reconstruction_quality(
+        #     experiment_results=all_results,
+        #     dataset_samples=dataset_samples,
+        #     show_best_worst=True
+        # )
+        # 
+        # # 🎯 Generate comprehensive grid-based performance analysis
+        # if generate_visualizations:
+        #     print("\n🔥 Generating Performance Grid Analysis...")
+        #     print("=" * 55)
+        #     
+        #     # 1. Create performance heatmaps (Architecture × Latent Dimension matrices)
+        #     heatmap_files = create_performance_heatmaps(
+        #         experiment_results=all_results,
+        #         metrics=['final_test_loss', 'final_silhouette', 'training_time'],
+        #         output_dir=output_dir,
+        #         show_plots=not output_dir  # Show plots only if not saving to file
+        #     )
+        #     visualization_files.update(heatmap_files)
+        #     
+        #     # 2. Analyze hyperparameter sensitivity and importance
+        #     sensitivity_analysis = analyze_hyperparameter_sensitivity(
+        #         experiment_results=all_results,
+        #         metrics=['final_test_loss', 'final_silhouette', 'training_time'],
+        #         verbose=verbose
+        #     )
+        #     
+        #     # 3. Identify optimal configurations with statistical confidence
+        #     optimal_configs = identify_optimal_configurations(
+        #         experiment_results=all_results,
+        #         primary_metric='final_test_loss',
+        #         minimize_metric=True,
+        #         top_n=5,
+        #         verbose=verbose
+        #     )
+        #     
+        #     # 4. Generate 3D performance surfaces for key metrics
+        #     if verbose:
+        #         print("\n🌄 Generating 3D Performance Surfaces...")
+        #     
+        #     for metric in ['final_test_loss', 'final_silhouette']:
+        #         surface_file = generate_performance_surfaces(
+        #             experiment_results=all_results,
+        #             metric=metric,
+        #             output_dir=output_dir,
+        #             show_plots=not output_dir
+        #         )
+        #         if surface_file:
+        #             visualization_files[f'surface_{metric}'] = surface_file
+        #     
+        #     # Store analysis results for potential export
+        #     analysis_results = {
+        #         'sensitivity_analysis': sensitivity_analysis,
+        #         'optimal_configurations': optimal_configs,
+        #         'heatmap_files': heatmap_files
+        #     }
+        #     
+        #     # Export analysis summary if output directory provided
+        #     if output_dir:
+        #         analysis_summary_path = Path(output_dir) / 'grid_analysis_summary.json'
+        #         with open(analysis_summary_path, 'w') as f:
+        #             # Convert numpy types to native Python types for JSON serialization
+        #             json_friendly_analysis = convert_to_json_serializable(analysis_results)
+        #             json.dump(json_friendly_analysis, f, indent=2)
+        #         visualization_files['grid_analysis_summary'] = str(analysis_summary_path)
+        #         print(f"💾 Saved grid analysis summary: {analysis_summary_path}")
+        #     
+        #     all_visualization_files = {**visualization_files, **reconstruction_files}
+        
         if verbose:
-            print("\n🔍 Generating reconstruction analysis report...")
-        
-        # Prepare dataset samples for reconstruction analysis
-        dataset_samples = {
-            'test_data': test_data,
-            'test_labels': test_labels,
-            'class_names': class_names
-        }
-        
-        # Generate reconstruction comparison report
-        reconstruction_files = generate_reconstruction_comparison_report(
-            experiment_results=all_results,
-            dataset_samples=dataset_samples,
-            output_dir=output_dir,
-            show_visualizations=show_plots
-        )
-        
-        # Analyze reconstruction quality across all experiments
-        reconstruction_analysis = analyze_reconstruction_quality(
-            experiment_results=all_results,
-            dataset_samples=dataset_samples,
-            show_best_worst=True
-        )
-        
-        # 🎯 Generate comprehensive grid-based performance analysis
-        if generate_visualizations:
-            print("\n🔥 Generating Performance Grid Analysis...")
-            print("=" * 55)
-            
-            # 1. Create performance heatmaps (Architecture × Latent Dimension matrices)
-            heatmap_files = create_performance_heatmaps(
-                experiment_results=all_results,
-                metrics=['final_test_loss', 'final_silhouette', 'training_time'],
-                output_dir=output_dir,
-                show_plots=not output_dir  # Show plots only if not saving to file
-            )
-            visualization_files.update(heatmap_files)
-            
-            # 2. Analyze hyperparameter sensitivity and importance
-            sensitivity_analysis = analyze_hyperparameter_sensitivity(
-                experiment_results=all_results,
-                metrics=['final_test_loss', 'final_silhouette', 'training_time'],
-                verbose=verbose
-            )
-            
-            # 3. Identify optimal configurations with statistical confidence
-            optimal_configs = identify_optimal_configurations(
-                experiment_results=all_results,
-                primary_metric='final_test_loss',
-                minimize_metric=True,
-                top_n=5,
-                verbose=verbose
-            )
-            
-            # 4. Generate 3D performance surfaces for key metrics
-            if verbose:
-                print("\n🌄 Generating 3D Performance Surfaces...")
-            
-            for metric in ['final_test_loss', 'final_silhouette']:
-                surface_file = generate_performance_surfaces(
-                    experiment_results=all_results,
-                    metric=metric,
-                    output_dir=output_dir,
-                    show_plots=not output_dir
-                )
-                if surface_file:
-                    visualization_files[f'surface_{metric}'] = surface_file
-            
-            # Store analysis results for potential export
-            analysis_results = {
-                'sensitivity_analysis': sensitivity_analysis,
-                'optimal_configurations': optimal_configs,
-                'heatmap_files': heatmap_files
-            }
-            
-            # Export analysis summary if output directory provided
-            if output_dir:
-                analysis_summary_path = Path(output_dir) / 'grid_analysis_summary.json'
-                with open(analysis_summary_path, 'w') as f:
-                    # Convert numpy types to native Python types for JSON serialization
-                    json_friendly_analysis = convert_to_json_serializable(analysis_results)
-                    json.dump(json_friendly_analysis, f, indent=2)
-                visualization_files['grid_analysis_summary'] = str(analysis_summary_path)
-                print(f"💾 Saved grid analysis summary: {analysis_summary_path}")
-            
-            all_visualization_files = {**visualization_files, **reconstruction_files}
-        
-        if verbose:
-            print(f"\n✅ All visualizations and reconstruction analysis complete!")
-            if all_visualization_files:
+            print(f"\n✅ All visualizations complete!")
+            if visualization_files:
                 print("📁 Generated files:")
-                for file_type, file_path in all_visualization_files.items():
+                for file_type, file_path in visualization_files.items():
                     print(f"  - {file_type}: {file_path}")
     
     # Additional analysis summary (matching original notebook)

@@ -1129,9 +1129,9 @@ def plot_latent_dim_comparison(
         random_seed: Random seed for title
         figure_size: Size of the figure
     """
-    # Get list of architectures and create colors
+    # Get list of architectures and create colors using rainbow colormap to match AutoEncoderJupyterTest.ipynb
     architectures = list(all_results.keys())
-    colors = plt.cm.tab10(np.linspace(0, 1, len(architectures)))
+    colors = plt.cm.rainbow(np.linspace(0, 1, len(architectures)))
     
     # Create 2x2 subplot layout
     fig, axes = plt.subplots(2, 2, figsize=figure_size)
@@ -1227,8 +1227,8 @@ def plot_systematic_training_curves(
     if n_archs == 1:
         axes = axes.reshape(1, -1)
     
-    # Color map for different latent dimensions
-    colors = plt.cm.tab10(np.linspace(0, 1, 10))
+    # Color map for different latent dimensions using rainbow colormap to match AutoEncoderJupyterTest.ipynb
+    colors = plt.cm.rainbow(np.linspace(0, 1, 10))
     
     for arch_idx, (architecture, results) in enumerate(systematic_results.items()):
         train_ax = axes[arch_idx, 0]

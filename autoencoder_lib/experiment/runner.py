@@ -581,7 +581,7 @@ class ExperimentRunner:
             try:
                 train_silhouette, validation_silhouette = self.visualize_latent_space_side_by_side(
                     model, train_data_tensor, train_labels_tensor, validation_data, validation_labels,
-                    class_names, f'Training Progress - Epoch {epoch}, Step {step}'
+                    class_names, f'Training Progress - Epoch {epoch}, Step {step}', comparison_type="validation"
                 )
                 if calculate_train_silhouette and train_silhouette is not None:
                     history['train_silhouette_scores'].append(train_silhouette)
@@ -636,7 +636,7 @@ class ExperimentRunner:
             try:
                 final_train_silhouette, final_validation_silhouette = self.visualize_latent_space_side_by_side(
                     model, train_data_tensor, train_labels_tensor, validation_data, validation_labels,
-                    class_names, 'Final Results'
+                    class_names, 'Final Results', comparison_type="validation"
                 )
                 
             except Exception as e:
@@ -741,35 +741,43 @@ class ExperimentRunner:
             **training_kwargs
         )
     
-    def visualize_latent_space_side_by_side(self, model, train_data, train_labels, test_data, test_labels, 
-                                           class_names=None, epoch_info=""):
+    def visualize_latent_space_side_by_side(self, model, train_data, train_labels, comparison_data, comparison_labels, 
+                                           class_names=None, epoch_info="", comparison_type="validation"):
         """
-        Visualize train and test latent spaces side by side using the proper visualization module function.
+        Visualize train and comparison (validation/test) latent spaces side by side.
+        
+        This function creates side-by-side visualizations comparing training data with either:
+        - Validation data (during training and final evaluation)
+        - Test data (final unbiased evaluation only)
         
         Args:
             model: Trained autoencoder model
             train_data: Training data tensor
             train_labels: Training labels
-            test_data: Test data tensor  
-            test_labels: Test labels
+            comparison_data: Data to compare against (validation or test data)
+            comparison_labels: Labels for comparison data  
             class_names: List of class names
-            epoch_info: Information about current epoch for title
+            epoch_info: Information about current epoch/context for title
+            comparison_type: Type of comparison ("validation" or "test") for proper labeling
             
         Returns:
-            Tuple of (train_silhouette, test_silhouette)
+            Tuple of (train_silhouette, comparison_silhouette)
         """
         try:
             from ..visualization import visualize_side_by_side_latent_spaces
+            
+            # Create context-aware title suffix
+            context_title = f"{epoch_info} - Train vs {comparison_type.title()}"
             
             # Use the proper visualization function from the visualization module with 2x2 grid
             return visualize_side_by_side_latent_spaces(
                 model=model,
                 train_data=train_data,
                 train_labels=train_labels,
-                test_data=test_data,
-                test_labels=test_labels,
+                test_data=comparison_data,  # Parameter name in viz function is 'test_data' but it's context-dependent
+                test_labels=comparison_labels,
                 class_names=class_names,
-                title_suffix=epoch_info,
+                title_suffix=context_title,
                 device=str(self.device),
                 figure_size=(20, 16),
                 grid_layout="2x2"
@@ -825,7 +833,7 @@ class ExperimentRunner:
             try:
                 final_train_silhouette, final_validation_silhouette = self.visualize_latent_space_side_by_side(
                     model, train_data_tensor, train_labels_tensor, validation_data, validation_labels,
-                    class_names, 'Final Results'
+                    class_names, 'Final Results', comparison_type="validation"
                 )
                 
             except Exception as e:
@@ -888,19 +896,9 @@ class ExperimentRunner:
             # Comprehensive test vs train latent space visualization
             print("🔍 Test vs Train Latent Space Analysis (final unbiased evaluation):")
             try:
-                from ..visualization import visualize_side_by_side_latent_spaces
-                
-                train_silhouette, test_silhouette = visualize_side_by_side_latent_spaces(
-                    model=model,
-                    train_data=train_data_tensor,
-                    train_labels=train_labels_tensor,
-                    test_data=test_data,
-                    test_labels=test_labels,
-                    class_names=class_names,
-                    title_suffix="🧪 FINAL TEST EVALUATION (UNBIASED)",
-                    device=str(self.device),
-                    figure_size=(20, 16),
-                    grid_layout="2x2"
+                train_silhouette, test_silhouette = self.visualize_latent_space_side_by_side(
+                    model, train_data_tensor, train_labels_tensor, test_data, test_labels,
+                    class_names, "🧪 FINAL TEST EVALUATION (UNBIASED)", comparison_type="test"
                 )
                 
                 print(f"✅ Final Test Loss: {test_loss:.6f}")

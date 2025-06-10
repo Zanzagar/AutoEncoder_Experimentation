@@ -468,19 +468,21 @@ class ExperimentRunner:
             
             final_validation_loss = self.memory_efficient_evaluation(model, validation_data, loss_func)
             
-            # Only evaluate on test data if provided (final evaluation only)
+            # Perform final test evaluation if test data is provided
             final_test_loss = None
+            final_test_silhouette = None
+            
             if test_data is not None and test_labels is not None:
-                final_test_loss = self.memory_efficient_evaluation(model, test_data, loss_func)
-                print("📊 Performing final test set evaluation (unbiased)")
+                final_test_loss, final_test_silhouette = self._perform_test_evaluation(
+                    model, train_data_tensor, train_labels_tensor, test_data, test_labels, class_names, loss_func
+                )
             else:
                 print("📊 No test data provided - using validation performance as final metric")
         
         # Final visualization and silhouette calculation (using validation data for visualization)
         final_train_silhouette, final_validation_silhouette = self._perform_final_evaluation(
-            model, train_data_tensor, train_labels_tensor, validation_data, validation_labels,
-            class_names, calculate_train_silhouette, calculate_validation_silhouette,
-            train_view_data, train_view_labels, validation_view_data, validation_view_labels, test_data, test_labels
+            model, train_view_data, train_view_labels, validation_view_data, validation_view_labels,
+            train_data_tensor, train_labels_tensor, validation_data, validation_labels, class_names
         )
         
         # CONSOLIDATED FINAL RESULTS SUMMARY
@@ -507,22 +509,10 @@ class ExperimentRunner:
             print(f"   • Validation Data: {final_validation_silhouette:.4f}")
         else:
             print(f"   • Validation Data: N/A (insufficient classes)")
-        if test_data is not None and test_labels is not None:
-            # Calculate test silhouette if test data was provided
-            from ..visualization import visualize_side_by_side_latent_spaces
-            try:
-                _, final_test_silhouette = visualize_side_by_side_latent_spaces(
-                    model=model, train_data=train_data_tensor, train_labels=train_labels_tensor,
-                    test_data=test_data, test_labels=test_labels, class_names=class_names,
-                    title_suffix="Final Test Evaluation", device=str(self.device),
-                    figure_size=(20, 16), grid_layout="2x2", verbose=False
-                )
-                if final_test_silhouette is not None:
-                    print(f"   • Test Data: {final_test_silhouette:.4f} (unbiased evaluation)")
-                else:
-                    print(f"   • Test Data: N/A (insufficient classes)")
-            except Exception as e:
-                print(f"   • Test Data: Error calculating ({e})")
+        if final_test_silhouette is not None:
+            print(f"   • Test Data: {final_test_silhouette:.4f} (unbiased evaluation)")
+        elif test_data is not None:
+            print(f"   • Test Data: N/A (insufficient classes)")
         print("="*70)
         print("✅ Experiment Complete!")
         print("="*70 + "\n")
@@ -600,18 +590,63 @@ class ExperimentRunner:
             except Exception as e:
                 print(f"Warning: Could not visualize latent spaces: {e}")
     
-    def _perform_final_evaluation(self, model, train_data_tensor, train_labels_tensor,
-                                validation_data, validation_labels, class_names, calculate_train_silhouette,
-                                calculate_validation_silhouette, train_view_data, train_view_labels, 
-                                validation_view_data, validation_view_labels, test_data=None, test_labels=None):
-        """Perform final evaluation and visualization using validation data."""
-        print("Generating final latent space visualization and metrics")
+    def _perform_final_evaluation(self, model, train_view_data, train_view_labels, 
+                                validation_view_data, validation_view_labels, train_data_tensor, train_labels_tensor,
+                                validation_data, validation_labels, class_names):
+        """
+        Perform comprehensive final visualization showing both reconstructions and latent spaces.
         
-        # Always perform comprehensive final visualization using validation data
-        final_train_silhouette, final_validation_silhouette = self.comprehensive_final_visualization(
-            model, train_view_data, train_view_labels, validation_view_data, validation_view_labels,
-            train_data_tensor, train_labels_tensor, validation_data, validation_labels, class_names
-        )
+        Args:
+            model: Trained model
+            train_view_data: Selected training data for visualization
+            train_view_labels: Labels for training visualization data
+            validation_view_data: Selected validation data for visualization
+            validation_view_labels: Labels for validation visualization data
+            train_data_tensor: Full training data tensor
+            train_labels_tensor: Full training labels tensor
+            validation_data: Full validation data tensor
+            validation_labels: Full validation labels tensor
+            class_names: List of class names
+            
+        Returns:
+            Tuple of (final_train_silhouette, final_validation_silhouette)
+        """
+        print("\n" + "="*60)
+        print("📊 FINAL VISUALIZATION GENERATION")
+        print("="*60)
+        
+        with torch.no_grad():
+            # 1. Show final reconstructions
+            print("Generating final reconstruction visualizations...")
+            _, train_decoded = model(train_view_data)
+            _, validation_decoded = model(validation_view_data)
+            
+            self._show_reconstructions(
+                train_view_data, train_decoded, train_view_labels, class_names,
+                'Final Results - Training: Original vs. Reconstructed'
+            )
+            
+            self._show_reconstructions(
+                validation_view_data, validation_decoded, validation_view_labels, class_names,
+                'Final Results - Validation: Original vs. Reconstructed'
+            )
+            
+            # 2. Show final latent space visualization using proper visualization module
+            print("Generating final latent space analysis...")
+            try:
+                final_train_silhouette, final_validation_silhouette = self.visualize_latent_space_side_by_side(
+                    model, train_data_tensor, train_labels_tensor, validation_data, validation_labels,
+                    class_names, 'Final Results'
+                )
+                
+            except Exception as e:
+                print(f"Warning: Could not create final latent space visualization: {e}")
+                final_train_silhouette = None
+                final_validation_silhouette = None
+        
+        print("="*60)
+        print("✅ FINAL VISUALIZATION COMPLETE")
+        print("="*60)
         
         return final_train_silhouette, final_validation_silhouette
     
@@ -802,4 +837,80 @@ class ExperimentRunner:
         print("✅ FINAL VISUALIZATION COMPLETE")
         print("="*60)
         
-        return final_train_silhouette, final_validation_silhouette 
+        return final_train_silhouette, final_validation_silhouette
+    
+    def _perform_test_evaluation(self, model, train_data_tensor, train_labels_tensor, 
+                               test_data, test_labels, class_names, loss_func):
+        """
+        Perform final unbiased test evaluation with comprehensive visualizations.
+        
+        This function should ONLY be called once at the very end of training,
+        after all model selection and hyperparameter tuning is complete.
+        
+        Args:
+            model: Final trained model
+            train_data_tensor: Full training data (for comparison in visualizations)
+            train_labels_tensor: Full training labels
+            test_data: Test dataset (never seen during training)
+            test_labels: Test labels
+            class_names: List of class names
+            loss_func: Loss function to evaluate test performance
+            
+        Returns:
+            Tuple of (test_loss, test_silhouette)
+        """
+        print("\n" + "="*50)
+        print("🧪 FINAL TEST EVALUATION (UNBIASED)")
+        print("="*50)
+        print("⚠️  This is the first and only time test data is used!")
+        print("📊 Generating comprehensive test visualizations...")
+        
+        model.eval()
+        with torch.no_grad():
+            # Calculate test loss
+            test_loss = self.memory_efficient_evaluation(model, test_data, loss_func)
+            
+            # Select test visualization samples
+            test_view_data, test_view_labels, _ = self.select_visualization_samples(
+                test_data, test_labels, class_names
+            )
+            
+            # Get test reconstructions
+            _, test_decoded = model(test_view_data)
+            
+            # Show final test reconstructions
+            print("🔍 Test Data Reconstructions (final unbiased evaluation):")
+            self._show_reconstructions(
+                test_view_data, test_decoded, test_view_labels, class_names,
+                '🧪 FINAL TEST EVALUATION - Original vs. Reconstructed (UNBIASED)'
+            )
+            
+            # Comprehensive test vs train latent space visualization
+            print("🔍 Test vs Train Latent Space Analysis (final unbiased evaluation):")
+            try:
+                from ..visualization import visualize_side_by_side_latent_spaces
+                
+                train_silhouette, test_silhouette = visualize_side_by_side_latent_spaces(
+                    model=model,
+                    train_data=train_data_tensor,
+                    train_labels=train_labels_tensor,
+                    test_data=test_data,
+                    test_labels=test_labels,
+                    class_names=class_names,
+                    title_suffix="🧪 FINAL TEST EVALUATION (UNBIASED)",
+                    device=str(self.device),
+                    figure_size=(20, 16),
+                    grid_layout="2x2"
+                )
+                
+                print(f"✅ Final Test Loss: {test_loss:.6f}")
+                if test_silhouette is not None:
+                    print(f"✅ Final Test Silhouette Score: {test_silhouette:.4f}")
+                else:
+                    print("⚠️  Test Silhouette Score: N/A (insufficient classes)")
+                    
+                return test_loss, test_silhouette
+                
+            except Exception as e:
+                print(f"⚠️  Error in test visualization: {e}")
+                return test_loss, None 

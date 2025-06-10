@@ -111,8 +111,7 @@ class ExperimentRunner:
                 if len(available_indices) < samples_per_class:
                     print(f"Warning: Only {len(available_indices)} samples available for class {label}, requested {samples_per_class}")
             
-            # Sort view_indices to ensure consistent ordering
-            view_indices = sorted(view_indices)
+            # DO NOT sort view_indices - maintain class grouping order (class 0, class 0, class 1, class 1, etc.)
             view_data = test_data[view_indices].to(self.device)
             view_labels = test_labels[view_indices]
             
@@ -120,7 +119,7 @@ class ExperimentRunner:
             for label in sorted(class_samples.keys()):
                 label_name = class_names[label] if class_names and label < len(class_names) else f"Class {label}"
                 selected_for_label = [i for i in view_indices if test_labels[i].item() == label]
-                print(f"  {label_name}: indices {selected_for_label}")
+                print(f"  {label_name}: indices {selected_for_label} (grouped by class)")
         else:
             # Use first n samples if no class information (deterministic)
             n_test_img = min(10, len(test_data))
@@ -208,8 +207,7 @@ class ExperimentRunner:
                 selected_indices = available_indices[:min(samples_per_class, len(available_indices))]
                 view_indices.extend(selected_indices)
             
-            # Sort view_indices to ensure consistent ordering
-            view_indices = sorted(view_indices)
+            # DO NOT sort view_indices - maintain class grouping order (class 0, class 0, class 1, class 1, etc.)
             train_view_data = train_data_tensor[view_indices].to(self.device)
             train_view_labels = train_labels_tensor[view_indices]
             
@@ -217,7 +215,7 @@ class ExperimentRunner:
             for label in sorted(class_samples.keys()):
                 label_name = class_names[label] if class_names and label < len(class_names) else f"Class {label}"
                 selected_for_label = [i for i in view_indices if train_labels_tensor[i].item() == label]
-                print(f"  Train {label_name}: indices {selected_for_label}")
+                print(f"  Train {label_name}: indices {selected_for_label} (grouped by class)")
         else:
             # Use first n samples if no class information (deterministic)
             n_train_img = min(len(train_data_tensor), 10)

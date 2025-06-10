@@ -503,20 +503,11 @@ class ExperimentRunner:
                 f'Training Progress - Epoch {epoch}, Step {step} - Test: Original vs. Reconstructed'
             )
             
-            # Visualize latent space and calculate silhouette scores
-            # Extract latent representations
-            encoded_train, _ = model(train_data_tensor.to(self.device))
-            encoded_test, _ = model(test_data.to(self.device))
-            
-            # Flatten latent vectors for visualization
-            train_latent = encoded_train.view(encoded_train.size(0), -1).cpu()
-            test_latent = encoded_test.view(encoded_test.size(0), -1).cpu()
-            
-            # Visualize both train and test latent spaces side by side
+            # Visualize latent space and calculate silhouette scores using proper visualization module
             try:
                 train_silhouette, test_silhouette = self.visualize_latent_space_side_by_side(
-                    train_latent, train_labels_tensor, test_latent, test_labels,
-                    class_names, f'Training Progress - Epoch {epoch}, Step {step}', 'tsne'
+                    model, train_data_tensor, train_labels_tensor, test_data, test_labels,
+                    class_names, f'Training Progress - Epoch {epoch}, Step {step}'
                 )
                 if calculate_train_silhouette and train_silhouette is not None:
                     history['train_silhouette_scores'].append(train_silhouette)
@@ -627,106 +618,38 @@ class ExperimentRunner:
             **training_kwargs
         )
     
-    def visualize_latent_space_side_by_side(self, train_latent, train_labels, test_latent, test_labels, 
-                                           class_names=None, epoch_info="", method='tsne'):
+    def visualize_latent_space_side_by_side(self, model, train_data, train_labels, test_data, test_labels, 
+                                           class_names=None, epoch_info=""):
         """
-        Visualize train and test latent spaces side by side with silhouette scores in titles.
+        Visualize train and test latent spaces side by side using the proper visualization module function.
         
         Args:
-            train_latent: Training latent representations
+            model: Trained autoencoder model
+            train_data: Training data tensor
             train_labels: Training labels
-            test_latent: Test latent representations  
+            test_data: Test data tensor  
             test_labels: Test labels
             class_names: List of class names
             epoch_info: Information about current epoch for title
-            method: Dimensionality reduction method ('tsne' or 'pca')
             
         Returns:
             Tuple of (train_silhouette, test_silhouette)
         """
         try:
-            from sklearn.manifold import TSNE
-            from sklearn.decomposition import PCA
-            from sklearn.metrics import silhouette_score
-            import matplotlib.pyplot as plt
-            import numpy as np
+            from ..visualization import visualize_side_by_side_latent_spaces
             
-            # Create side-by-side subplots
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-            
-            train_silhouette = None
-            test_silhouette = None
-            
-            # Process training data
-            if len(np.unique(train_labels)) > 1:  # Need at least 2 classes for silhouette
-                if method == 'tsne':
-                    if train_latent.shape[1] > 2:
-                        tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(train_latent)-1))
-                        train_2d = tsne.fit_transform(train_latent)
-                    else:
-                        train_2d = train_latent.numpy() if hasattr(train_latent, 'numpy') else train_latent
-                else:  # PCA
-                    pca = PCA(n_components=2, random_state=42)
-                    train_2d = pca.fit_transform(train_latent)
-                
-                # Calculate silhouette score
-                train_silhouette = silhouette_score(train_latent, train_labels)
-                
-                # Plot training data
-                unique_labels = np.unique(train_labels)
-                colors = plt.cm.Set1(np.linspace(0, 1, len(unique_labels)))
-                
-                for i, label in enumerate(unique_labels):
-                    mask = train_labels == label
-                    label_name = class_names[label] if class_names and label < len(class_names) else f'Class {label}'
-                    ax1.scatter(train_2d[mask, 0], train_2d[mask, 1], 
-                              c=[colors[i]], label=label_name, alpha=0.7, s=50)
-                
-                ax1.set_title(f'{epoch_info} - Train Latent Space ({method.upper()})\nSilhouette Score: {train_silhouette:.4f}')
-                ax1.legend()
-                ax1.grid(True, alpha=0.3)
-            else:
-                ax1.text(0.5, 0.5, 'Insufficient classes\nfor visualization', 
-                        ha='center', va='center', transform=ax1.transAxes)
-                ax1.set_title(f'{epoch_info} - Train Latent Space ({method.upper()})\nSilhouette Score: N/A')
-            
-            # Process test data
-            if len(np.unique(test_labels)) > 1:  # Need at least 2 classes for silhouette
-                if method == 'tsne':
-                    if test_latent.shape[1] > 2:
-                        tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(test_latent)-1))
-                        test_2d = tsne.fit_transform(test_latent)
-                    else:
-                        test_2d = test_latent.numpy() if hasattr(test_latent, 'numpy') else test_latent
-                else:  # PCA
-                    pca = PCA(n_components=2, random_state=42)
-                    test_2d = pca.fit_transform(test_latent)
-                
-                # Calculate silhouette score
-                test_silhouette = silhouette_score(test_latent, test_labels)
-                
-                # Plot test data
-                unique_labels = np.unique(test_labels)
-                colors = plt.cm.Set1(np.linspace(0, 1, len(unique_labels)))
-                
-                for i, label in enumerate(unique_labels):
-                    mask = test_labels == label
-                    label_name = class_names[label] if class_names and label < len(class_names) else f'Class {label}'
-                    ax2.scatter(test_2d[mask, 0], test_2d[mask, 1], 
-                              c=[colors[i]], label=label_name, alpha=0.7, s=50)
-                
-                ax2.set_title(f'{epoch_info} - Test Latent Space ({method.upper()})\nSilhouette Score: {test_silhouette:.4f}')
-                ax2.legend()
-                ax2.grid(True, alpha=0.3)
-            else:
-                ax2.text(0.5, 0.5, 'Insufficient classes\nfor visualization', 
-                        ha='center', va='center', transform=ax2.transAxes)
-                ax2.set_title(f'{epoch_info} - Test Latent Space ({method.upper()})\nSilhouette Score: N/A')
-            
-            plt.tight_layout()
-            plt.show()
-            
-            return train_silhouette, test_silhouette
+            # Use the proper visualization function from the visualization module
+            return visualize_side_by_side_latent_spaces(
+                model=model,
+                train_data=train_data,
+                train_labels=train_labels,
+                test_data=test_data,
+                test_labels=test_labels,
+                class_names=class_names,
+                title_suffix=epoch_info,
+                device=str(self.device),
+                figure_size=(20, 8)
+            )
             
         except Exception as e:
             print(f"Warning: Could not create side-by-side latent space visualization: {e}")
@@ -773,21 +696,12 @@ class ExperimentRunner:
                 'Final Results - Test: Original vs. Reconstructed'
             )
             
-            # 2. Show final latent space visualization
+            # 2. Show final latent space visualization using proper visualization module
             print("Generating final latent space analysis...")
-            # Extract latent representations for final visualization
-            encoded_train, _ = model(train_data_tensor.to(self.device))
-            encoded_test, _ = model(test_data.to(self.device))
-            
-            # Flatten latent vectors
-            train_latent = encoded_train.view(encoded_train.size(0), -1).cpu()
-            test_latent = encoded_test.view(encoded_test.size(0), -1).cpu()
-            
-            # Final latent space visualization (both train and test side by side)
             try:
                 final_train_silhouette, final_test_silhouette = self.visualize_latent_space_side_by_side(
-                    train_latent, train_labels_tensor, test_latent, test_labels,
-                    class_names, 'Final Results', 'tsne'
+                    model, train_data_tensor, train_labels_tensor, test_data, test_labels,
+                    class_names, 'Final Results'
                 )
                 
             except Exception as e:

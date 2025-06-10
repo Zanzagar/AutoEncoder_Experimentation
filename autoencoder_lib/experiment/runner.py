@@ -638,7 +638,7 @@ class ExperimentRunner:
         try:
             from ..visualization import visualize_side_by_side_latent_spaces
             
-            # Use the proper visualization function from the visualization module
+            # Use the proper visualization function from the visualization module with 2x2 grid
             return visualize_side_by_side_latent_spaces(
                 model=model,
                 train_data=train_data,
@@ -648,7 +648,8 @@ class ExperimentRunner:
                 class_names=class_names,
                 title_suffix=epoch_info,
                 device=str(self.device),
-                figure_size=(20, 8)
+                figure_size=(20, 16),
+                grid_layout="2x2"
             )
             
         except Exception as e:

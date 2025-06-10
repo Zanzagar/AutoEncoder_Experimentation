@@ -134,6 +134,7 @@ def visualize_raw_data_tsne(
     # Create visualization
     plt.figure(figsize=figure_size)
     
+    # Get unique labels and colors using rainbow colormap like the reference notebook
     unique_labels = np.unique(all_labels)
     colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_labels)))
     
@@ -148,19 +149,20 @@ def visualize_raw_data_tsne(
             label=label_name,
             alpha=0.7,
             s=50,
-            edgecolors='none'
+            edgecolors='black',
+            linewidth=0.5
         )
     
-    # Create title with data count and silhouette score
-    title_with_info = f"Raw Data t-SNE Visualization (n={n_samples})"
+    # Create title with data count like the reference notebook: "t-SNE Visualization of All Raw Image Data (n={len(X)})"
+    title_with_info = f"t-SNE Visualization of All Raw Image Data (n={n_samples})"
     if silhouette is not None:
         title_with_info += f"\nSilhouette Score: {silhouette:.3f}"
     
-    plt.title(title_with_info, fontsize=14)
-    plt.legend()
-    plt.grid(alpha=0.3)
-    plt.xlabel('t-SNE Component 1')
-    plt.ylabel('t-SNE Component 2')
+    plt.title(title_with_info, fontsize=14, fontweight='bold')
+    plt.xlabel('t-SNE Component 1', fontsize=12)
+    plt.ylabel('t-SNE Component 2', fontsize=12)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.grid(True, alpha=0.3)
     
     plt.tight_layout()
     plt.show()
@@ -226,6 +228,7 @@ def visualize_latent_tsne(
     # Create visualization
     plt.figure(figsize=figure_size)
     
+    # Get unique labels and colors using rainbow colormap like the reference notebook
     unique_labels = np.unique(labels)
     colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_labels)))
     
@@ -240,19 +243,20 @@ def visualize_latent_tsne(
             label=label_name,
             alpha=0.7,
             s=50,
-            edgecolors='none'
+            edgecolors='black',
+            linewidth=0.5
         )
     
-    # Create title with data count and silhouette score
-    title_with_info = f"{title} (n={n_samples})"
+    # Add data point count to title like the reference notebook
+    title_with_count = f"{title} (n={n_samples})"
     if silhouette is not None:
-        title_with_info += f"\nSilhouette Score: {silhouette:.3f}"
+        title_with_count += f"\nSilhouette Score: {silhouette:.3f}"
     
-    plt.title(title_with_info, fontsize=14)
-    plt.legend()
-    plt.grid(alpha=0.3)
-    plt.xlabel('t-SNE Component 1')
-    plt.ylabel('t-SNE Component 2')
+    plt.title(title_with_count, fontsize=14, fontweight='bold')
+    plt.xlabel('t-SNE Component 1', fontsize=12)
+    plt.ylabel('t-SNE Component 2', fontsize=12)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.grid(True, alpha=0.3)
     
     plt.tight_layout()
     plt.show()
@@ -441,10 +445,11 @@ def visualize_side_by_side_latent_spaces(
     orig_silhouette: Optional[float] = None,
     max_samples: int = 500,
     device: str = 'cpu',
-    figure_size: Tuple[int, int] = (20, 8)
+    figure_size: Tuple[int, int] = (20, 16),
+    grid_layout: str = "2x2"
 ) -> Tuple[Optional[float], Optional[float]]:
     """
-    Compute and visualize t-SNE projections of train and test data side by side.
+    Compute and visualize t-SNE projections of train and test data with both latent space and reconstructed images.
     
     Args:
         model: Trained autoencoder model
@@ -458,6 +463,7 @@ def visualize_side_by_side_latent_spaces(
         max_samples: Maximum samples to use for t-SNE (for performance)
         device: Device to run model on
         figure_size: Size of the figure
+        grid_layout: Layout type ("1x2" for side-by-side latent only, "2x2" for latent + reconstructed)
         
     Returns:
         Tuple of (train_silhouette, test_silhouette) scores
@@ -539,60 +545,169 @@ def visualize_side_by_side_latent_spaces(
             except Exception as e:
                 print(f"Could not calculate test silhouette score: {e}")
         
-        # Create side-by-side plots
-        fig, axes = plt.subplots(1, 2, figsize=figure_size)
-        
-        # Plot train data
-        unique_train_labels = np.unique(train_plot_labels)
-        train_colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_train_labels)))
-        
-        for i, label in enumerate(unique_train_labels):
-            mask = train_plot_labels == label
-            axes[0].scatter(
-                train_low_dim_embs[mask, 0], 
-                train_low_dim_embs[mask, 1],
-                c=[train_colors[i]],
-                label=class_names[label] if class_names is not None else f"Class {label}",
-                alpha=0.7,
-                s=50,
-                edgecolors='none'
-            )
-        
-        train_title = f"Train Data Latent Space ({len(train_data)} images)"
-        if train_silhouette is not None:
-            train_title += f"\nSilhouette Score: {train_silhouette:.3f}"
-        axes[0].set_title(train_title, fontsize=14)
-        axes[0].legend()
-        axes[0].grid(alpha=0.3)
-        axes[0].set_xlabel('t-SNE Component 1')
-        axes[0].set_ylabel('t-SNE Component 2')
-        
-        # Plot test data
-        unique_test_labels = np.unique(test_plot_labels)
-        test_colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_test_labels)))
-        
-        for i, label in enumerate(unique_test_labels):
-            mask = test_plot_labels == label
-            axes[1].scatter(
-                test_low_dim_embs[mask, 0], 
-                test_low_dim_embs[mask, 1],
-                c=[test_colors[i]],
-                label=class_names[label] if class_names is not None else f"Class {label}",
-                alpha=0.7,
-                s=50,
-                edgecolors='none'
-            )
-        
-        test_title = f"Test Data Latent Space ({len(test_data)} images)"
-        if test_silhouette is not None:
-            test_title += f"\nSilhouette Score: {test_silhouette:.3f}"
-        if orig_silhouette is not None:
-            test_title += f" (Original: {orig_silhouette:.3f})"
-        axes[1].set_title(test_title, fontsize=14)
-        axes[1].legend()
-        axes[1].grid(alpha=0.3)
-        axes[1].set_xlabel('t-SNE Component 1')
-        axes[1].set_ylabel('t-SNE Component 2')
+        # Determine layout based on grid_layout parameter
+        if grid_layout == "2x2":
+            # Generate reconstructed images for both train and test data
+            print("Generating reconstructed images for t-SNE analysis...")
+            
+            with torch.no_grad():
+                # Get reconstructed train data
+                try:
+                    _, train_reconstructed = model(train_data_device)
+                except:
+                    train_reconstructed = model.decode(encoded_train)
+                train_reconstructed = train_reconstructed.view(train_reconstructed.size(0), -1).detach().cpu().numpy()
+                
+                # Get reconstructed test data  
+                try:
+                    _, test_reconstructed = model(test_data_device)
+                except:
+                    test_reconstructed = model.decode(encoded_test)
+                test_reconstructed = test_reconstructed.view(test_reconstructed.size(0), -1).detach().cpu().numpy()
+            
+            # Compute t-SNE for reconstructed images
+            print("Computing t-SNE for reconstructed images...")
+            train_recon_tsne = TSNE(perplexity=min(30, len(train_reconstructed[:train_plot_only])-1), 
+                                   n_components=2, init='pca', max_iter=5000, random_state=42)
+            train_recon_low_dim = train_recon_tsne.fit_transform(train_reconstructed[:train_plot_only])
+            
+            test_recon_tsne = TSNE(perplexity=min(30, len(test_reconstructed[:test_plot_only])-1), 
+                                  n_components=2, init='pca', max_iter=5000, random_state=42)
+            test_recon_low_dim = test_recon_tsne.fit_transform(test_reconstructed[:test_plot_only])
+            
+            # Create 2x2 grid
+            fig, axes = plt.subplots(2, 2, figsize=figure_size)
+            axes = axes.flatten()
+            
+            # Get colors once
+            unique_train_labels = np.unique(train_plot_labels)
+            unique_test_labels = np.unique(test_plot_labels)
+            train_colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_train_labels)))
+            test_colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_test_labels)))
+            
+            # Plot 1: Train Latent Space
+            for i, label in enumerate(unique_train_labels):
+                mask = train_plot_labels == label
+                axes[0].scatter(
+                    train_low_dim_embs[mask, 0], train_low_dim_embs[mask, 1],
+                    c=[train_colors[i]],
+                    label=class_names[label] if class_names is not None else f"Class {label}",
+                    alpha=0.7, s=50, edgecolors='none'
+                )
+            train_title = f"Train Latent Space ({len(train_data)} images)"
+            if train_silhouette is not None:
+                train_title += f"\nSilhouette Score: {train_silhouette:.3f}"
+            axes[0].set_title(train_title, fontsize=12)
+            axes[0].legend(fontsize=8)
+            axes[0].grid(alpha=0.3)
+            axes[0].set_xlabel('t-SNE Component 1')
+            axes[0].set_ylabel('t-SNE Component 2')
+            
+            # Plot 2: Test Latent Space
+            for i, label in enumerate(unique_test_labels):
+                mask = test_plot_labels == label
+                axes[1].scatter(
+                    test_low_dim_embs[mask, 0], test_low_dim_embs[mask, 1],
+                    c=[test_colors[i]],
+                    label=class_names[label] if class_names is not None else f"Class {label}",
+                    alpha=0.7, s=50, edgecolors='none'
+                )
+            test_title = f"Test Latent Space ({len(test_data)} images)"
+            if test_silhouette is not None:
+                test_title += f"\nSilhouette Score: {test_silhouette:.3f}"
+            if orig_silhouette is not None:
+                test_title += f" (Original: {orig_silhouette:.3f})"
+            axes[1].set_title(test_title, fontsize=12)
+            axes[1].legend(fontsize=8)
+            axes[1].grid(alpha=0.3)
+            axes[1].set_xlabel('t-SNE Component 1')
+            axes[1].set_ylabel('t-SNE Component 2')
+            
+            # Plot 3: Train Reconstructed Images
+            for i, label in enumerate(unique_train_labels):
+                mask = train_plot_labels == label
+                axes[2].scatter(
+                    train_recon_low_dim[mask, 0], train_recon_low_dim[mask, 1],
+                    c=[train_colors[i]],
+                    label=class_names[label] if class_names is not None else f"Class {label}",
+                    alpha=0.7, s=50, edgecolors='none'
+                )
+            axes[2].set_title(f"Train Reconstructed Images ({len(train_data)} images)", fontsize=12)
+            axes[2].legend(fontsize=8)
+            axes[2].grid(alpha=0.3)
+            axes[2].set_xlabel('t-SNE Component 1')
+            axes[2].set_ylabel('t-SNE Component 2')
+            
+            # Plot 4: Test Reconstructed Images
+            for i, label in enumerate(unique_test_labels):
+                mask = test_plot_labels == label
+                axes[3].scatter(
+                    test_recon_low_dim[mask, 0], test_recon_low_dim[mask, 1],
+                    c=[test_colors[i]],
+                    label=class_names[label] if class_names is not None else f"Class {label}",
+                    alpha=0.7, s=50, edgecolors='none'
+                )
+            axes[3].set_title(f"Test Reconstructed Images ({len(test_data)} images)", fontsize=12)
+            axes[3].legend(fontsize=8)
+            axes[3].grid(alpha=0.3)
+            axes[3].set_xlabel('t-SNE Component 1')
+            axes[3].set_ylabel('t-SNE Component 2')
+            
+        else:
+            # Original 1x2 layout (side-by-side latent spaces only)
+            fig, axes = plt.subplots(1, 2, figsize=figure_size)
+            
+            # Plot train data
+            unique_train_labels = np.unique(train_plot_labels)
+            train_colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_train_labels)))
+            
+            for i, label in enumerate(unique_train_labels):
+                mask = train_plot_labels == label
+                axes[0].scatter(
+                    train_low_dim_embs[mask, 0], 
+                    train_low_dim_embs[mask, 1],
+                    c=[train_colors[i]],
+                    label=class_names[label] if class_names is not None else f"Class {label}",
+                    alpha=0.7,
+                    s=50,
+                    edgecolors='none'
+                )
+            
+            train_title = f"Train Data Latent Space ({len(train_data)} images)"
+            if train_silhouette is not None:
+                train_title += f"\nSilhouette Score: {train_silhouette:.3f}"
+            axes[0].set_title(train_title, fontsize=14)
+            axes[0].legend()
+            axes[0].grid(alpha=0.3)
+            axes[0].set_xlabel('t-SNE Component 1')
+            axes[0].set_ylabel('t-SNE Component 2')
+            
+            # Plot test data
+            unique_test_labels = np.unique(test_plot_labels)
+            test_colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_test_labels)))
+            
+            for i, label in enumerate(unique_test_labels):
+                mask = test_plot_labels == label
+                axes[1].scatter(
+                    test_low_dim_embs[mask, 0], 
+                    test_low_dim_embs[mask, 1],
+                    c=[test_colors[i]],
+                    label=class_names[label] if class_names is not None else f"Class {label}",
+                    alpha=0.7,
+                    s=50,
+                    edgecolors='none'
+                )
+            
+            test_title = f"Test Data Latent Space ({len(test_data)} images)"
+            if test_silhouette is not None:
+                test_title += f"\nSilhouette Score: {test_silhouette:.3f}"
+            if orig_silhouette is not None:
+                test_title += f" (Original: {orig_silhouette:.3f})"
+            axes[1].set_title(test_title, fontsize=14)
+            axes[1].legend()
+            axes[1].grid(alpha=0.3)
+            axes[1].set_xlabel('t-SNE Component 1')
+            axes[1].set_ylabel('t-SNE Component 2')
         
         # Add overall title
         if title_suffix:
@@ -602,3 +717,85 @@ def visualize_side_by_side_latent_spaces(
         plt.show()
         
         return train_silhouette, test_silhouette 
+
+
+def plot_tsne_visualization(
+    X: np.ndarray,
+    labels: np.ndarray,
+    class_names: Optional[List[str]] = None,
+    title: str = "t-SNE Visualization",
+    random_state: int = 42,
+    perplexity: int = 30,
+    n_iter: int = 1000,
+    save_path: Optional[str] = None,
+    figure_size: Tuple[int, int] = (10, 8)
+) -> None:
+    """
+    Create a t-SNE visualization of high-dimensional data.
+    This implementation matches the AutoEncoderJupyterTest.ipynb reference patterns.
+    
+    Args:
+        X: Input data of shape (n_samples, n_features)
+        labels: Class labels for each sample
+        class_names: Optional list of class names for the legend
+        title: Title for the plot
+        random_state: Random state for reproducible results
+        perplexity: t-SNE perplexity parameter
+        n_iter: Number of iterations for t-SNE optimization
+        save_path: Path to save the figure (optional)
+        figure_size: Size of the figure
+    """
+    from sklearn.manifold import TSNE
+    
+    # Apply t-SNE with fixed random state for consistency
+    print(f"Computing t-SNE projection with perplexity={perplexity}, random_state={random_state}...")
+    tsne = TSNE(
+        n_components=2,
+        random_state=random_state,
+        perplexity=perplexity,
+        n_iter=n_iter,
+        verbose=0
+    )
+    X_tsne = tsne.fit_transform(X)
+    
+    # Get unique labels and colors using rainbow colormap like the reference notebook
+    unique_labels = np.unique(labels)
+    colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_labels)))
+    
+    # Create the plot
+    plt.figure(figsize=figure_size)
+    
+    # Plot each class with consistent colors
+    for i, label in enumerate(unique_labels):
+        mask = labels == label
+        class_name = class_names[label] if class_names and label < len(class_names) else f"Class {label}"
+        
+        plt.scatter(
+            X_tsne[mask, 0], 
+            X_tsne[mask, 1],
+            c=[colors[i]], 
+            label=class_name,
+            alpha=0.7,
+            s=50,
+            edgecolors='black',
+            linewidth=0.5
+        )
+    
+    # Add data point count to title like the reference notebook
+    n_samples = len(X)
+    full_title = f"{title} (n={n_samples})"
+    
+    plt.title(full_title, fontsize=14, fontweight='bold')
+    plt.xlabel('t-SNE Component 1', fontsize=12)
+    plt.ylabel('t-SNE Component 2', fontsize=12)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.grid(True, alpha=0.3)
+    
+    # Make the plot look cleaner
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Saved t-SNE visualization to: {save_path}")
+    
+    plt.show() 

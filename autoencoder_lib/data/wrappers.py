@@ -683,4 +683,127 @@ def print_split_summary(dataset_info: Dict[str, Any]) -> None:
             val_count = sum(1 for label in val_data['labels'] if label == i)
             print(f", Val: {val_count:3d}")
         else:
-            print() 
+            print()
+
+def create_train_validation_test_split(dataset_info, train_ratio=0.6, validation_ratio=0.2, test_ratio=0.2, 
+                                      random_seed=42, batch_size=32, shuffle_train=True):
+    """
+    Create proper train/validation/test split with data loaders following ML best practices.
+    
+    This function implements the scientifically rigorous 3-way split where:
+    - Training data: Used for model parameter updates via backpropagation
+    - Validation data: Used for monitoring during training, early stopping, hyperparameter tuning
+    - Test data: Used ONLY for final unbiased evaluation (completely unseen during training)
+    
+    Args:
+        dataset_info: Dataset information dictionary from generate_dataset()
+        train_ratio: Proportion of data for training (default: 0.6)
+        validation_ratio: Proportion of data for validation (default: 0.2) 
+        test_ratio: Proportion of data for testing (default: 0.2)
+        random_seed: Random seed for reproducible splits
+        batch_size: Batch size for training data loader
+        shuffle_train: Whether to shuffle training data
+        
+    Returns:
+        Dictionary containing:
+        {
+            'train_loader': DataLoader for training,
+            'validation_data': Tensor of validation data,
+            'validation_labels': Tensor of validation labels,
+            'test_data': Tensor of test data (for final evaluation only),
+            'test_labels': Tensor of test labels,
+            'split_info': Information about the data split,
+            'class_names': List of class names,
+            'data_loader': StandardDataLoader instance for advanced usage
+        }
+        
+    Example:
+        # Generate dataset
+        dataset_info = generate_dataset("geological", "my_dataset", num_samples_per_class=500)
+        
+        # Create proper 3-way split
+        data_split = create_train_validation_test_split(
+            dataset_info, 
+            train_ratio=0.6, 
+            validation_ratio=0.2, 
+            test_ratio=0.2
+        )
+        
+        # Use with new experiment runner
+        runner = ExperimentRunner()
+        model, history = runner.train_autoencoder(
+            model=my_model,
+            train_loader=data_split['train_loader'],
+            validation_data=data_split['validation_data'],
+            validation_labels=data_split['validation_labels'],
+            test_data=data_split['test_data'],  # Optional - for final evaluation
+            test_labels=data_split['test_labels'],
+            class_names=data_split['class_names']
+        )
+    """
+    from .loaders import StandardDataLoader
+    import torch
+    
+    # Validate split ratios
+    total_ratio = train_ratio + validation_ratio + test_ratio
+    if abs(total_ratio - 1.0) > 1e-6:
+        raise ValueError(f"Split ratios must sum to 1.0, got {total_ratio}")
+    
+    print(f"🔄 Creating 3-way data split: {train_ratio*100:.1f}% train, "
+          f"{validation_ratio*100:.1f}% validation, {test_ratio*100:.1f}% test")
+    
+    # Create data loader with 3-way split capability
+    data_loader = StandardDataLoader(
+        dataset_info=dataset_info,
+        random_seed=random_seed,
+        batch_size=batch_size,
+        shuffle_train=shuffle_train
+    )
+    
+    # Create the split
+    split_info = data_loader.create_split(
+        dataset_info=dataset_info,
+        train_ratio=train_ratio,
+        test_ratio=test_ratio,
+        validation_ratio=validation_ratio,
+        random_seed=random_seed
+    )
+    
+    # Create data loaders
+    loaders = data_loader.create_data_loaders(dataset_info, split_info)
+    train_loader = loaders[0]
+    test_loader = loaders[1]
+    validation_loader = loaders[2] if len(loaders) > 2 else None
+    
+    if validation_loader is None:
+        raise ValueError("Validation split was not created properly")
+    
+    # Load validation and test data as tensors for monitoring/evaluation
+    tensors = data_loader.load_data_tensors(dataset_info, split_info)
+    train_data_tensor, train_labels_tensor = tensors[0], tensors[1]
+    test_data_tensor, test_labels_tensor = tensors[2], tensors[3]
+    validation_data_tensor, validation_labels_tensor = tensors[4], tensors[5]
+    
+    # Extract class names if available
+    class_names = dataset_info.get('class_names', None)
+    
+    # Print split summary
+    print(f"✅ Data split created successfully:")
+    print(f"   • Training: {len(train_data_tensor)} samples")
+    print(f"   • Validation: {len(validation_data_tensor)} samples (for monitoring)")
+    print(f"   • Test: {len(test_data_tensor)} samples (for final evaluation)")
+    if class_names:
+        print(f"   • Classes: {len(class_names)} ({', '.join(class_names)})")
+    
+    return {
+        'train_loader': train_loader,
+        'validation_data': validation_data_tensor,
+        'validation_labels': validation_labels_tensor,
+        'test_data': test_data_tensor,
+        'test_labels': test_labels_tensor,
+        'split_info': split_info,
+        'class_names': class_names,
+        'data_loader': data_loader,
+        'train_data_tensor': train_data_tensor,  # For compatibility
+        'train_labels_tensor': train_labels_tensor
+    } 

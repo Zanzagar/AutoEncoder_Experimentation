@@ -66,7 +66,7 @@ from .layered_geological import (
 )
 
 # Import high-level wrapper functions
-from .wrappers import generate_dataset, visualize_dataset
+from .wrappers import generate_dataset, visualize_dataset, create_train_validation_test_split
 
 # Define public API
 __all__ = [
@@ -95,7 +95,8 @@ __all__ = [
     
     # High-level wrapper functions (recommended interface)
     'generate_dataset',
-    'visualize_dataset'
+    'visualize_dataset',
+    'create_train_validation_test_split'
 ]
 
 # Version information

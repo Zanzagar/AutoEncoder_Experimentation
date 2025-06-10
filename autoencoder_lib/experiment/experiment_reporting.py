@@ -18,7 +18,6 @@ from datetime import datetime
 
 # Import core visualization functions
 from ..visualization.training_viz import (
-    plot_latent_dimension_analysis,
     plot_metrics_vs_latent_dim,
     plot_architecture_latent_heatmaps
 )
@@ -137,65 +136,49 @@ def generate_comprehensive_report(systematic_results: Dict[str, List[Dict[str, A
     
     generated_files = {}
     
-    # 1. Create latent dimension analysis using core function  
-    print("🏗️ Creating latent dimension analysis...")
-    for architecture, results in systematic_results.items():
-        # Organize data by latent dimension
-        latent_dims = []
-        metrics_dict = {
-            'final_test_loss': [],
-            'final_silhouette': [],
-            'training_time': []
-        }
-        
-        sorted_results = sorted(results, key=lambda x: x['latent_dim'])
-        for result in sorted_results:
-            latent_dims.append(result['latent_dim'])
-            metrics = result['metrics']
-            metrics_dict['final_test_loss'].append(metrics.get('final_test_loss', 0))
-            metrics_dict['final_silhouette'].append(metrics.get('final_silhouette', 0))
-            metrics_dict['training_time'].append(metrics.get('training_time', 0))
-        
-        if latent_dims:
-            # Use core visualization function
-            plot_latent_dimension_analysis(
-                latent_dims=latent_dims,
-                metrics_dict=metrics_dict
-            )
-    
-    # 2. Create new metric vs latent dimension plots (Train/Test Loss and Train/Test Silhouette)
-    print("📊 Creating metrics vs latent dimension plots...")
+    # Plot metrics vs latent dimension for each architecture  
+    print("📊 Plotting metrics vs latent dimension...")
     # Convert systematic_results to the format expected by plot_metrics_vs_latent_dim
     all_results_for_metrics = {}
     for architecture, results in systematic_results.items():
         all_results_for_metrics[architecture] = []
         for result in results:
             # Create dummy model object and use history directly
-            model_placeholder = None
+            model_placeholder = type('Model', (), {'latent_dim': result.get('latent_dim', 'Unknown')})()
             history = result  # The result dict contains all the metrics we need
             all_results_for_metrics[architecture].append((model_placeholder, history))
     
-    # Generate the metrics vs latent dimension plot
     plot_metrics_vs_latent_dim(
-        all_results=all_results_for_metrics,
+        all_results_for_metrics,
         save_path=output_dir,
-        session_timestamp=datetime.now().strftime("%Y%m%d_%H%M%S")
+        session_timestamp=datetime.now().strftime("%Y%m%d_%H%M%S"),
+        random_seed=42
     )
     
-    # 3. Create architecture × latent dimension heatmaps for all 4 metrics
+    # Create architecture × latent dimension heatmaps for all metrics
     print("🔥 Creating architecture × latent dimension heatmaps...")
-    # Use the same data format as metrics plots
+    # Convert systematic_results to the format expected by plot_architecture_latent_heatmaps
+    all_results_for_heatmaps = {}
+    for architecture, results in systematic_results.items():
+        all_results_for_heatmaps[architecture] = []
+        for result in results:
+            # Create dummy model object and use history directly
+            model_placeholder = type('Model', (), {'latent_dim': result.get('latent_dim', 'Unknown')})()
+            history = result  # The result dict contains all the metrics we need
+            all_results_for_heatmaps[architecture].append((model_placeholder, history))
+    
+    # Generate the architecture × latent dimension heatmaps
     plot_architecture_latent_heatmaps(
-        all_results=all_results_for_metrics,
+        all_results=all_results_for_heatmaps,
         save_path=output_dir,
         session_timestamp=datetime.now().strftime("%Y%m%d_%H%M%S")
     )
     
-    # 4. Create comparison tables
+    # Create comparison tables
     print("📋 Creating comparison tables...")
     df = create_comparison_tables(systematic_results)
     
-    # 5. Save experiment summary
+    # Save experiment summary
     print("💾 Saving experiment summary...")
     csv_path = save_experiment_summary(systematic_results, save_dir=output_dir)
     generated_files['summary_csv'] = csv_path

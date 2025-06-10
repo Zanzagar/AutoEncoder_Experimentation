@@ -280,181 +280,6 @@ def plot_performance_grid(
     plt.show()
 
 
-def plot_latent_dimension_analysis(
-    latent_dims: List[int],
-    metrics_dict: Dict[str, List[float]],
-    figure_size: Tuple[int, int] = (15, 10)
-) -> None:
-    """
-    Analyze performance across different latent dimensions.
-    
-    Args:
-        latent_dims: List of latent dimensions tested
-        metrics_dict: Dictionary with metric names as keys and lists of values
-        figure_size: Size of the figure
-    """
-    metrics = list(metrics_dict.keys())
-    num_metrics = len(metrics)
-    
-    # Create subplots
-    cols = min(3, num_metrics)
-    rows = (num_metrics + cols - 1) // cols
-    
-    fig, axes = plt.subplots(rows, cols, figsize=figure_size)
-    if rows == 1 and cols == 1:
-        axes = [axes]
-    elif rows == 1:
-        axes = axes.flatten()
-    elif cols == 1:
-        axes = axes.flatten()
-    else:
-        axes = axes.flatten()
-    
-    for i, metric in enumerate(metrics):
-        ax = axes[i]
-        values = metrics_dict[metric]
-        
-        # Plot with markers and lines
-        ax.plot(latent_dims, values, 'o-', linewidth=2, markersize=8)
-        
-        # Highlight best performance
-        if 'loss' in metric.lower():
-            best_idx = np.argmin(values)
-        else:
-            best_idx = np.argmax(values)
-        
-        ax.plot(latent_dims[best_idx], values[best_idx], 'r*', 
-               markersize=15, label=f'Best: {latent_dims[best_idx]}D')
-        
-        ax.set_title(metric.replace('_', ' ').title())
-        ax.set_xlabel('Latent Dimension')
-        ax.set_ylabel(metric.replace('_', ' ').title())
-        ax.grid(True, alpha=0.3)
-        ax.legend()
-        
-        # Add value annotations
-        for x, y in zip(latent_dims, values):
-            ax.annotate(f'{y:.3f}', (x, y), textcoords="offset points", 
-                       xytext=(0,10), ha='center', fontsize=8)
-    
-    # Hide unused subplots
-    for i in range(num_metrics, len(axes)):
-        axes[i].axis('off')
-    
-    plt.suptitle('Latent Dimension Analysis', fontsize=16)
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_convergence_analysis(
-    histories: Dict[str, Dict[str, List]],
-    convergence_threshold: float = 0.001,
-    patience: int = 5,
-    figure_size: Tuple[int, int] = (15, 8)
-) -> None:
-    """
-    Analyze convergence behavior across different models.
-    
-    Args:
-        histories: Dictionary of training histories by model name
-        convergence_threshold: Threshold for considering loss converged
-        patience: Number of epochs to wait for improvement
-        figure_size: Size of the figure
-    """
-    fig, axes = plt.subplots(2, 2, figsize=figure_size)
-    
-    model_names = list(histories.keys())
-    colors = plt.cm.tab10(np.linspace(0, 1, len(model_names)))
-    
-    # Plot training curves for all models
-    for i, (name, history) in enumerate(histories.items()):
-        epochs = range(1, len(history['train_loss']) + 1)
-        axes[0, 0].plot(epochs, history['train_loss'], 
-                       color=colors[i], label=name, linewidth=2)
-    
-    axes[0, 0].set_title('Training Loss Comparison')
-    axes[0, 0].set_xlabel('Epoch')
-    axes[0, 0].set_ylabel('Loss')
-    axes[0, 0].legend()
-    axes[0, 0].grid(True, alpha=0.3)
-    
-    # Convergence epochs analysis
-    convergence_epochs = []
-    model_labels = []
-    
-    for name, history in histories.items():
-        train_loss = history['train_loss']
-        
-        # Find convergence epoch
-        converged_epoch = len(train_loss)  # Default to last epoch
-        
-        for epoch in range(patience, len(train_loss)):
-            recent_losses = train_loss[epoch-patience:epoch]
-            if all(abs(train_loss[epoch] - loss) < convergence_threshold for loss in recent_losses):
-                converged_epoch = epoch + 1  # Convert to 1-indexed
-                break
-        
-        convergence_epochs.append(converged_epoch)
-        model_labels.append(name)
-    
-    bars = axes[0, 1].bar(range(len(convergence_epochs)), convergence_epochs, 
-                         color=colors[:len(convergence_epochs)], alpha=0.7)
-    
-    for bar, epoch in zip(bars, convergence_epochs):
-        axes[0, 1].text(bar.get_x() + bar.get_width()/2., bar.get_height(),
-                       f'{epoch}', ha='center', va='bottom')
-    
-    axes[0, 1].set_title('Convergence Speed')
-    axes[0, 1].set_xlabel('Model')
-    axes[0, 1].set_ylabel('Epochs to Convergence')
-    axes[0, 1].set_xticks(range(len(model_labels)))
-    axes[0, 1].set_xticklabels(model_labels, rotation=45, ha='right')
-    axes[0, 1].grid(True, alpha=0.3, axis='y')
-    
-    # Final performance comparison
-    final_losses = [histories[name]['train_loss'][-1] for name in model_names]
-    bars = axes[1, 0].bar(range(len(final_losses)), final_losses, 
-                         color=colors[:len(final_losses)], alpha=0.7)
-    
-    for bar, loss in zip(bars, final_losses):
-        axes[1, 0].text(bar.get_x() + bar.get_width()/2., bar.get_height(),
-                       f'{loss:.4f}', ha='center', va='bottom')
-    
-    axes[1, 0].set_title('Final Training Loss')
-    axes[1, 0].set_xlabel('Model')
-    axes[1, 0].set_ylabel('Final Loss')
-    axes[1, 0].set_xticks(range(len(model_labels)))
-    axes[1, 0].set_xticklabels(model_labels, rotation=45, ha='right')
-    axes[1, 0].grid(True, alpha=0.3, axis='y')
-    
-    # Loss improvement analysis
-    improvement_rates = []
-    for name in model_names:
-        train_loss = histories[name]['train_loss']
-        initial_loss = train_loss[0]
-        final_loss = train_loss[-1]
-        improvement = (initial_loss - final_loss) / initial_loss * 100
-        improvement_rates.append(improvement)
-    
-    bars = axes[1, 1].bar(range(len(improvement_rates)), improvement_rates, 
-                         color=colors[:len(improvement_rates)], alpha=0.7)
-    
-    for bar, rate in zip(bars, improvement_rates):
-        axes[1, 1].text(bar.get_x() + bar.get_width()/2., bar.get_height(),
-                       f'{rate:.1f}%', ha='center', va='bottom')
-    
-    axes[1, 1].set_title('Loss Improvement Rate')
-    axes[1, 1].set_xlabel('Model')
-    axes[1, 1].set_ylabel('Improvement (%)')
-    axes[1, 1].set_xticks(range(len(model_labels)))
-    axes[1, 1].set_xticklabels(model_labels, rotation=45, ha='right')
-    axes[1, 1].grid(True, alpha=0.3, axis='y')
-    
-    plt.suptitle('Convergence Analysis', fontsize=16)
-    plt.tight_layout()
-    plt.show()
-
-
 def plot_training_efficiency(
     training_times: Dict[str, float],
     final_performances: Dict[str, float],
@@ -867,7 +692,7 @@ def plot_metrics_vs_latent_dim(
 ) -> None:
     """
     Plot metrics (test/train loss and silhouette scores) versus latent dimension for each architecture.
-    Creates a 2x2 subplot layout with Train Loss, Test Loss, Train Silhouette, and Test Silhouette.
+    This implementation matches the AutoEncoderJupyterTest.ipynb reference patterns.
     
     Args:
         all_results: Dictionary mapping architecture -> list of (model, history) tuples
@@ -876,98 +701,117 @@ def plot_metrics_vs_latent_dim(
         random_seed: Random seed for title
         figure_size: Size of the figure
     """
-    # Get list of architectures and create colors using rainbow colormap to match AutoEncoderJupyterTest.ipynb
+    if not all_results:
+        print("No results to plot")
+        return
+    
+    print("📊 Plotting metrics vs latent dimension...")
+    
+    # Extract architectures and create colors using tab10 colormap like reference notebook
     architectures = list(all_results.keys())
-    colors = plt.cm.rainbow(np.linspace(0, 1, len(architectures)))
+    colors = plt.cm.tab10(np.linspace(0, 1, len(architectures)))
     
-    # Create a 2x2 subplot grid for the four metrics
+    # Create figure with 2x2 subplots
     fig, axes = plt.subplots(2, 2, figsize=figure_size)
+    fig.suptitle(f'Performance Metrics vs Latent Dimension\n{f"Session: {session_timestamp}" if session_timestamp else ""}{f" | Seed: {random_seed}" if random_seed else ""}', 
+                 fontsize=16, fontweight='bold')
     
-    # Define the metrics to plot - Train/Test Loss and Train/Test Silhouette
-    metrics = [
-        ('final_train_loss', 'Train Loss vs Latent Dimension', axes[0, 0]),
-        ('final_test_loss', 'Test Loss vs Latent Dimension', axes[0, 1]), 
-        ('final_train_silhouette', 'Train Silhouette vs Latent Dimension', axes[1, 0]),
-        ('final_silhouette', 'Test Silhouette vs Latent Dimension', axes[1, 1])
-    ]
+    # Prepare data structures for metrics
+    metrics_data = {
+        'train_loss': {},
+        'test_loss': {},
+        'train_silhouette': {},
+        'test_silhouette': {}
+    }
     
-    for i, (architecture, results) in enumerate(all_results.items()):
-        # Sort results by latent dimension
-        sorted_results = sorted(results, key=lambda x: x[1].get('latent_dim', 0))
+    # Extract data from results
+    for arch_idx, (architecture, results) in enumerate(all_results.items()):
+        latent_dims = []
+        train_losses = []
+        test_losses = []
+        train_silhouettes = []
+        test_silhouettes = []
         
-        for metric_key, metric_title, ax in metrics:
-            latent_dims = []
-            metric_values = []
-            
-            # Use a set to track unique latent dimensions
-            seen_dims = set()
-            
-            for model, history in sorted_results:
-                latent_dim = history.get('latent_dim', 0)
-                if latent_dim not in seen_dims and metric_key in history:
-                    seen_dims.add(latent_dim)
-                    latent_dims.append(latent_dim)
-                    metric_values.append(history.get(metric_key, 0))
-            
-            # Plot with consistent colors and styling to match AutoEncoderJupyterTest.ipynb
-            if latent_dims and metric_values:
-                ax.plot(latent_dims, metric_values, 'o-', 
-                        label=architecture, 
-                        color=colors[i],
-                        linewidth=2.5,
-                        markersize=8,
-                        markerfacecolor=colors[i],
-                        markeredgecolor='white',
-                        markeredgewidth=1)
-                
-                ax.set_title(metric_title, fontsize=12, fontweight='bold', pad=10)
-                ax.set_xlabel('Latent Dimension', fontsize=11)
-                ax.set_ylabel(metric_title.split(' vs ')[0], fontsize=11)
-                ax.grid(True, alpha=0.3, linestyle='--')
-                
-                # Style the axes to match AutoEncoderJupyterTest.ipynb
-                ax.spines['top'].set_visible(False)
-                ax.spines['right'].set_visible(False)
-                ax.spines['left'].set_linewidth(1.5)
-                ax.spines['bottom'].set_linewidth(1.5)
-                
-                # Set background color slightly off-white
-                ax.set_facecolor('#fafafa')
-                
-                # Use log scale for latent dimensions if appropriate
-                if len(set(latent_dims)) > 2:
-                    ax.set_xscale('log', base=2)
-                
-                # Add legend to each subplot
-                ax.legend(frameon=True, fancybox=True, shadow=True, fontsize=10)
-    
-    # Add overall title with session info if provided
-    title = "Metrics vs Latent Dimension Analysis"
-    if session_timestamp and random_seed:
-        title += f" - Run: {session_timestamp} (Seed: {random_seed})"
-    elif session_timestamp:
-        title += f" - Run: {session_timestamp}"
-    
-    plt.suptitle(title, fontsize=16, fontweight='bold', y=0.98)
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust layout to accommodate suptitle
-    
-    # Save the figure if path provided
-    if save_path:
-        if session_timestamp:
-            # If save_path is a directory, create filename; if it's a file, use it directly
-            if os.path.isdir(save_path) or not os.path.splitext(save_path)[1]:
-                # save_path is a directory
-                os.makedirs(save_path, exist_ok=True)
-                filename = f"metrics_vs_latent_dim_{session_timestamp}.png"
-                full_path = os.path.join(save_path, filename)
+        for model, history in results:
+            # Extract latent dimension from model or history
+            if hasattr(model, 'latent_dim'):
+                latent_dim = model.latent_dim
+            elif isinstance(history, dict) and 'latent_dim' in history:
+                latent_dim = history['latent_dim']
             else:
-                # save_path is already a filename
-                full_path = save_path
-        else:
-            full_path = save_path
+                # Try to extract from model architecture
+                continue
+            
+            # Extract metrics from history
+            if isinstance(history, dict):
+                train_loss = history.get('final_train_loss', history.get('train_loss', [None])[-1] if history.get('train_loss') else None)
+                test_loss = history.get('final_test_loss', history.get('test_loss', [None])[-1] if history.get('test_loss') else None)
+                train_sil = history.get('final_train_silhouette', history.get('train_silhouette'))
+                test_sil = history.get('final_test_silhouette', history.get('test_silhouette'))
+                
+                if train_loss is not None and test_loss is not None:
+                    latent_dims.append(latent_dim)
+                    train_losses.append(train_loss)
+                    test_losses.append(test_loss)
+                    train_silhouettes.append(train_sil if train_sil is not None else 0)
+                    test_silhouettes.append(test_sil if test_sil is not None else 0)
         
-        plt.savefig(full_path, dpi=300, bbox_inches='tight', facecolor='white')
-        print(f"Saved metrics vs latent dimension plot to: {full_path}")
+        # Sort by latent dimension
+        if latent_dims:
+            sorted_data = sorted(zip(latent_dims, train_losses, test_losses, train_silhouettes, test_silhouettes))
+            latent_dims, train_losses, test_losses, train_silhouettes, test_silhouettes = zip(*sorted_data)
+            
+            metrics_data['train_loss'][architecture] = (latent_dims, train_losses)
+            metrics_data['test_loss'][architecture] = (latent_dims, test_losses)
+            metrics_data['train_silhouette'][architecture] = (latent_dims, train_silhouettes)
+            metrics_data['test_silhouette'][architecture] = (latent_dims, test_silhouettes)
+    
+    # Plot Train Loss vs Latent Dimension
+    axes[0, 0].set_title('Train Loss vs Latent Dimension', fontweight='bold')
+    for arch_idx, (architecture, (latent_dims, train_losses)) in enumerate(metrics_data['train_loss'].items()):
+        axes[0, 0].plot(latent_dims, train_losses, 'o-', color=colors[arch_idx], 
+                       label=architecture, linewidth=2, markersize=8)
+    axes[0, 0].set_xlabel('Latent Dimension')
+    axes[0, 0].set_ylabel('Train Loss')
+    axes[0, 0].legend()
+    axes[0, 0].grid(True, alpha=0.3)
+    
+    # Plot Test Loss vs Latent Dimension  
+    axes[0, 1].set_title('Test Loss vs Latent Dimension', fontweight='bold')
+    for arch_idx, (architecture, (latent_dims, test_losses)) in enumerate(metrics_data['test_loss'].items()):
+        axes[0, 1].plot(latent_dims, test_losses, 'o--', color=colors[arch_idx], 
+                       label=architecture, linewidth=2, markersize=8)
+    axes[0, 1].set_xlabel('Latent Dimension')
+    axes[0, 1].set_ylabel('Test Loss')
+    axes[0, 1].legend()
+    axes[0, 1].grid(True, alpha=0.3)
+    
+    # Plot Train Silhouette vs Latent Dimension
+    axes[1, 0].set_title('Train Silhouette vs Latent Dimension', fontweight='bold')
+    for arch_idx, (architecture, (latent_dims, train_silhouettes)) in enumerate(metrics_data['train_silhouette'].items()):
+        axes[1, 0].plot(latent_dims, train_silhouettes, 'o-', color=colors[arch_idx], 
+                       label=architecture, linewidth=2, markersize=8)
+    axes[1, 0].set_xlabel('Latent Dimension')
+    axes[1, 0].set_ylabel('Train Silhouette Score')
+    axes[1, 0].legend()
+    axes[1, 0].grid(True, alpha=0.3)
+    
+    # Plot Test Silhouette vs Latent Dimension
+    axes[1, 1].set_title('Test Silhouette vs Latent Dimension', fontweight='bold')
+    for arch_idx, (architecture, (latent_dims, test_silhouettes)) in enumerate(metrics_data['test_silhouette'].items()):
+        axes[1, 1].plot(latent_dims, test_silhouettes, 'o--', color=colors[arch_idx], 
+                       label=architecture, linewidth=2, markersize=8)
+    axes[1, 1].set_xlabel('Latent Dimension') 
+    axes[1, 1].set_ylabel('Test Silhouette Score')
+    axes[1, 1].legend()
+    axes[1, 1].grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    
+    # Save if requested
+    if save_path and session_timestamp:
+        filename = f"metrics_vs_latent_dim_{session_timestamp}.png"
+        plt.savefig(os.path.join(save_path, filename), dpi=300, bbox_inches='tight')
     
     plt.show()
 
@@ -1145,94 +989,6 @@ def plot_training_metrics(
                 plt.close()
 
 
-def plot_latent_dim_comparison(
-    all_results: Dict[str, List[Tuple]],
-    save_path: Optional[str] = None,
-    session_timestamp: Optional[str] = None,
-    random_seed: Optional[int] = None,
-    figure_size: Tuple[int, int] = (12, 8)
-) -> None:
-    """
-    Create plots comparing the effect of latent dimension on each architecture.
-    
-    Args:
-        all_results: Dictionary mapping architecture -> list of (model, history) tuples
-        save_path: Path to save the figure (optional)
-        session_timestamp: Session timestamp for title/filename
-        random_seed: Random seed for title
-        figure_size: Size of the figure
-    """
-    # Get list of architectures and create colors using rainbow colormap to match AutoEncoderJupyterTest.ipynb
-    architectures = list(all_results.keys())
-    colors = plt.cm.rainbow(np.linspace(0, 1, len(architectures)))
-    
-    # Create 2x2 subplot layout
-    fig, axes = plt.subplots(2, 2, figsize=figure_size)
-    axes = axes.flatten()
-    
-    metrics = ['Final Train Loss', 'Final Test Loss', 'Best Train Loss', 'Best Test Loss']
-    
-    for i, metric in enumerate(metrics):
-        ax = axes[i]
-        
-        for j, (architecture, results) in enumerate(all_results.items()):
-            latent_dims = []
-            values = []
-            
-            for model, history in results:
-                latent_dim = history.get('latent_dim', 0)
-                
-                if 'final' in metric.lower():
-                    if 'train' in metric.lower() and 'train_loss' in history:
-                        value = history['train_loss'][-1] if history['train_loss'] else np.nan
-                    elif 'test' in metric.lower() and 'test_loss' in history:
-                        value = history['test_loss'][-1] if history['test_loss'] else np.nan
-                    else:
-                        continue
-                else:  # 'best' in metric
-                    if 'train' in metric.lower() and 'train_loss' in history:
-                        value = min(history['train_loss']) if history['train_loss'] else np.nan
-                    elif 'test' in metric.lower() and 'test_loss' in history:
-                        value = min(history['test_loss']) if history['test_loss'] else np.nan
-                    else:
-                        continue
-                
-                latent_dims.append(latent_dim)
-                values.append(value)
-            
-            if latent_dims and values:
-                # Sort by latent dimension
-                sorted_pairs = sorted(zip(latent_dims, values))
-                latent_dims, values = zip(*sorted_pairs)
-                
-                ax.plot(latent_dims, values, 'o-', 
-                       label=architecture, color=colors[j], 
-                       linewidth=2, markersize=8)
-        
-        ax.set_title(metric)
-        ax.set_xlabel('Latent Dimension')
-        ax.set_ylabel('Loss Value')
-        ax.grid(alpha=0.3)
-        ax.legend()
-    
-    # Add overall title
-    title = "Latent Dimension Comparison Across Architectures"
-    if session_timestamp:
-        title += f" ({session_timestamp})"
-    if random_seed is not None:
-        title += f" [Seed: {random_seed}]"
-    
-    fig.suptitle(title, fontsize=16)
-    plt.tight_layout()
-    
-    # Save if requested
-    if save_path and session_timestamp:
-        filename = f"latent_dim_comparison_{session_timestamp}.png"
-        plt.savefig(os.path.join(save_path, filename), dpi=300, bbox_inches='tight')
-    
-    plt.show()
-
-
 def plot_systematic_training_curves(
     systematic_results: Dict[str, List[Dict]], 
     figure_size: Tuple[int, int] = (16, 10),
@@ -1327,153 +1083,259 @@ def plot_architecture_latent_heatmaps(
     save_path: Optional[str] = None,
     session_timestamp: Optional[str] = None,
     random_seed: Optional[int] = None,
-    figure_size: Tuple[int, int] = (20, 16)
+    figure_size: Tuple[int, int] = (15, 10)
 ) -> None:
     """
-    Create architecture × latent dimension heatmaps for all 4 metrics.
-    Creates a 2x2 subplot layout with Train Loss, Test Loss, Train Silhouette, and Test Silhouette heatmaps.
+    Create heatmaps showing performance metrics across architectures and latent dimensions.
+    This implementation matches the AutoEncoderJupyterTest.ipynb reference patterns.
     
     Args:
         all_results: Dictionary mapping architecture -> list of (model, history) tuples
         save_path: Path to save the figure (optional)
-        session_timestamp: Session timestamp for title/filename
+        session_timestamp: Session timestamp for title/filename  
         random_seed: Random seed for title
         figure_size: Size of the figure
     """
-    import seaborn as sns
+    if not all_results:
+        print("No results to analyze")
+        return
+        
+    print("🔥 Creating architecture × latent dimension heatmaps...")
     
-    # Get list of architectures and latent dimensions
+    # Extract all architectures and latent dimensions
     architectures = list(all_results.keys())
     all_latent_dims = set()
     
-    # Collect all unique latent dimensions
-    for architecture, results in all_results.items():
+    for arch, results in all_results.items():
         for model, history in results:
-            latent_dim = history.get('latent_dim', 0)
-            all_latent_dims.add(latent_dim)
+            latent_dim = getattr(model, 'latent_dim', history.get('latent_dim', 'Unknown'))
+            if isinstance(latent_dim, (int, float)):
+                all_latent_dims.add(latent_dim)
     
-    latent_dims = sorted(list(all_latent_dims))
+    all_latent_dims = sorted(list(all_latent_dims))
     
-    if not architectures or not latent_dims:
-        print("No data available for heatmaps")
+    if not all_latent_dims:
+        print("No valid latent dimensions found")
         return
     
-    # Define the metrics to plot
-    metrics = [
-        ('final_train_loss', 'Train Loss', 'RdYlGn_r'),  # Lower is better
-        ('final_test_loss', 'Test Loss', 'RdYlGn_r'),    # Lower is better
-        ('final_train_silhouette', 'Train Silhouette', 'RdYlGn'),  # Higher is better
-        ('final_silhouette', 'Test Silhouette', 'RdYlGn')          # Higher is better
-    ]
+    # Initialize data matrices
+    train_loss_matrix = np.zeros((len(architectures), len(all_latent_dims)))
+    test_loss_matrix = np.zeros((len(architectures), len(all_latent_dims)))
+    train_loss_matrix.fill(np.nan)
+    test_loss_matrix.fill(np.nan)
     
-    # Create 2x2 subplot grid
+    # Fill matrices with data
+    for arch_idx, architecture in enumerate(architectures):
+        results = all_results[architecture]
+        
+        for model, history in results:
+            # Extract latent dimension
+            if hasattr(model, 'latent_dim'):
+                latent_dim = model.latent_dim
+            elif isinstance(history, dict) and 'latent_dim' in history:
+                latent_dim = history['latent_dim']
+            else:
+                continue
+            
+            if latent_dim in all_latent_dims:
+                dim_idx = all_latent_dims.index(latent_dim)
+                
+                # Extract final train loss - try multiple possible keys
+                train_loss = None
+                if isinstance(history, dict):
+                    # Try different possible keys for final train loss
+                    if 'final_train_loss' in history and history['final_train_loss'] is not None:
+                        train_loss = history['final_train_loss']
+                    elif 'train_loss' in history and history['train_loss'] and len(history['train_loss']) > 0:
+                        train_loss = history['train_loss'][-1]
+                    elif 'training_loss' in history and history['training_loss'] is not None:
+                        train_loss = history['training_loss']
+                
+                if train_loss is not None:
+                    train_loss_matrix[arch_idx, dim_idx] = train_loss
+                
+                # Extract final test loss - try multiple possible keys
+                test_loss = None
+                if isinstance(history, dict):
+                    # Try different possible keys for final test loss
+                    if 'final_test_loss' in history and history['final_test_loss'] is not None:
+                        test_loss = history['final_test_loss']
+                    elif 'test_loss' in history and history['test_loss'] and len(history['test_loss']) > 0:
+                        test_loss = history['test_loss'][-1]
+                    elif 'validation_loss' in history and history['validation_loss'] is not None:
+                        test_loss = history['validation_loss']
+                    elif 'val_loss' in history and history['val_loss'] is not None:
+                        test_loss = history['val_loss']
+                
+                if test_loss is not None:
+                    test_loss_matrix[arch_idx, dim_idx] = test_loss
+    
+    # Create heatmap subplot (2x1 layout to simplify like reference notebook)
+    fig, axes = plt.subplots(2, 1, figsize=figure_size)
+    
+    # Train Loss Heatmap
+    im1 = axes[0].imshow(train_loss_matrix, cmap='RdYlGn_r', aspect='auto')
+    axes[0].set_title('Train Loss Heatmap: Architecture × Latent Dimension')
+    axes[0].set_ylabel('Architecture')
+    axes[0].set_xticks(range(len(all_latent_dims)))
+    axes[0].set_xticklabels(all_latent_dims)
+    axes[0].set_yticks(range(len(architectures)))
+    axes[0].set_yticklabels(architectures)
+    
+    # Add text annotations for train loss
+    for i in range(len(architectures)):
+        for j in range(len(all_latent_dims)):
+            if not np.isnan(train_loss_matrix[i, j]):
+                axes[0].text(j, i, f'{train_loss_matrix[i, j]:.4f}', 
+                           ha='center', va='center', fontsize=10, color='black')
+    
+    # Add colorbar for train loss
+    cbar1 = plt.colorbar(im1, ax=axes[0])
+    cbar1.set_label('Train Loss')
+    
+    # Test Loss Heatmap
+    im2 = axes[1].imshow(test_loss_matrix, cmap='RdYlGn_r', aspect='auto')
+    axes[1].set_title('Test Loss Heatmap: Architecture × Latent Dimension')
+    axes[1].set_xlabel('Latent Dimension')
+    axes[1].set_ylabel('Architecture')
+    axes[1].set_xticks(range(len(all_latent_dims)))
+    axes[1].set_xticklabels(all_latent_dims)
+    axes[1].set_yticks(range(len(architectures)))
+    axes[1].set_yticklabels(architectures)
+    
+    # Add text annotations for test loss
+    for i in range(len(architectures)):
+        for j in range(len(all_latent_dims)):
+            if not np.isnan(test_loss_matrix[i, j]):
+                axes[1].text(j, i, f'{test_loss_matrix[i, j]:.4f}', 
+                           ha='center', va='center', fontsize=10, color='black')
+    
+    # Add colorbar for test loss
+    cbar2 = plt.colorbar(im2, ax=axes[1])
+    cbar2.set_label('Test Loss')
+    
+    # Add title with session info
+    title_parts = ['Performance Heatmaps: Architecture × Latent Dimension']
+    if session_timestamp:
+        title_parts.append(f'Session: {session_timestamp}')
+    if random_seed is not None:
+        title_parts.append(f'Seed: {random_seed}')
+    
+    fig.suptitle(' | '.join(title_parts), fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    
+    # Save if requested
+    if save_path and session_timestamp:
+        filename = f"architecture_latent_heatmaps_{session_timestamp}.png"
+        plt.savefig(os.path.join(save_path, filename), dpi=300, bbox_inches='tight')
+    
+    plt.show()
+
+
+def plot_convergence_analysis(
+    histories: Dict[str, Dict[str, List]],
+    convergence_threshold: float = 0.001,
+    patience: int = 5,
+    figure_size: Tuple[int, int] = (15, 8)
+) -> None:
+    """
+    Analyze convergence behavior across different models.
+    
+    Args:
+        histories: Dictionary of training histories by model name
+        convergence_threshold: Threshold for considering loss converged
+        patience: Number of epochs to wait for improvement
+        figure_size: Size of the figure
+    """
     fig, axes = plt.subplots(2, 2, figsize=figure_size)
     
-    for idx, (metric_key, metric_title, colormap) in enumerate(metrics):
-        ax = axes[idx // 2, idx % 2]
-        
-        # Create data matrix for heatmap
-        heatmap_data = np.full((len(architectures), len(latent_dims)), np.nan)
-        
-        for arch_idx, architecture in enumerate(architectures):
-            results = all_results[architecture]
-            
-            for model, history in results:
-                latent_dim = history.get('latent_dim', 0)
-                if latent_dim in latent_dims and metric_key in history:
-                    dim_idx = latent_dims.index(latent_dim)
-                    heatmap_data[arch_idx, dim_idx] = history[metric_key]
-        
-        # Create DataFrame for seaborn heatmap
-        heatmap_df = pd.DataFrame(
-            heatmap_data,
-            index=architectures,
-            columns=[f'{dim}' for dim in latent_dims]
-        )
-        
-        # Create heatmap with seaborn
-        mask = np.isnan(heatmap_data)
-        
-        # Create heatmap
-        sns.heatmap(
-            heatmap_df,
-            annot=True,
-            fmt='.3f',
-            cmap=colormap,
-            mask=mask,
-            ax=ax,
-            square=False,
-            linewidths=0.5,
-            cbar_kws={
-                'label': metric_title,
-                'shrink': 0.8
-            },
-            annot_kws={'fontsize': 10}
-        )
-        
-        # Highlight best performance with border
-        if not np.isnan(heatmap_data).all():
-            if 'loss' in metric_key.lower():
-                # Lower is better for loss
-                best_coords = np.unravel_index(np.nanargmin(heatmap_data), heatmap_data.shape)
-            else:
-                # Higher is better for silhouette
-                best_coords = np.unravel_index(np.nanargmax(heatmap_data), heatmap_data.shape)
-            
-            # Add border around best cell
-            ax.add_patch(plt.Rectangle(
-                (best_coords[1], best_coords[0]), 1, 1,
-                fill=False, edgecolor='black', linewidth=3
-            ))
-        
-        # Style the heatmap to match AutoEncoderJupyterTest.ipynb
-        ax.set_title(f'{metric_title} Heatmap\n(Architecture × Latent Dimension)', 
-                    fontsize=14, fontweight='bold', pad=15)
-        ax.set_xlabel('Latent Dimension', fontsize=12, fontweight='bold')
-        ax.set_ylabel('Architecture', fontsize=12, fontweight='bold')
-        
-        # Rotate x-axis labels if needed
-        ax.tick_params(axis='x', rotation=0)
-        ax.tick_params(axis='y', rotation=0)
-        
-        # Adjust y-axis labels for readability
-        yticklabels = ax.get_yticklabels()
-        for label in yticklabels:
-            label.set_fontsize(10)
-            # Make architecture names more readable
-            label.set_text(label.get_text().replace('_', ' ').title())
-        
-        # Adjust x-axis labels
-        xticklabels = ax.get_xticklabels()
-        for label in xticklabels:
-            label.set_fontsize(10)
+    model_names = list(histories.keys())
+    colors = plt.cm.tab10(np.linspace(0, 1, len(model_names)))
     
-    # Add overall title with session info if provided
-    title = "Architecture × Latent Dimension Performance Heatmaps"
-    if session_timestamp and random_seed:
-        title += f"\nRun: {session_timestamp} (Seed: {random_seed})"
-    elif session_timestamp:
-        title += f"\nRun: {session_timestamp}"
+    # Plot training curves for all models
+    for i, (name, history) in enumerate(histories.items()):
+        epochs = range(1, len(history['train_loss']) + 1)
+        axes[0, 0].plot(epochs, history['train_loss'], 
+                       color=colors[i], label=name, linewidth=2)
     
-    plt.suptitle(title, fontsize=18, fontweight='bold', y=0.98)
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust layout to accommodate suptitle
+    axes[0, 0].set_title('Training Loss Comparison')
+    axes[0, 0].set_xlabel('Epoch')
+    axes[0, 0].set_ylabel('Loss')
+    axes[0, 0].set_legend()
+    axes[0, 0].grid(True, alpha=0.3)
     
-    # Save the figure if path provided
-    if save_path:
-        if session_timestamp:
-            # If save_path is a directory, create filename; if it's a file, use it directly
-            if os.path.isdir(save_path) or not os.path.splitext(save_path)[1]:
-                # save_path is a directory
-                os.makedirs(save_path, exist_ok=True)
-                filename = f"architecture_latent_heatmaps_{session_timestamp}.png"
-                full_path = os.path.join(save_path, filename)
-            else:
-                # save_path is already a filename
-                full_path = save_path
-        else:
-            full_path = save_path
+    # Convergence epochs analysis
+    convergence_epochs = []
+    model_labels = []
+    
+    for name, history in histories.items():
+        train_loss = history['train_loss']
         
-        plt.savefig(full_path, dpi=300, bbox_inches='tight', facecolor='white')
-        print(f"Saved architecture × latent dimension heatmaps to: {full_path}")
+        # Find convergence epoch
+        converged_epoch = len(train_loss)  # Default to last epoch
+        
+        for epoch in range(patience, len(train_loss)):
+            recent_losses = train_loss[epoch-patience:epoch]
+            if all(abs(train_loss[epoch] - loss) < convergence_threshold for loss in recent_losses):
+                converged_epoch = epoch + 1  # Convert to 1-indexed
+                break
+        
+        convergence_epochs.append(converged_epoch)
+        model_labels.append(name)
     
+    bars = axes[0, 1].bar(range(len(convergence_epochs)), convergence_epochs, 
+                         color=colors[:len(convergence_epochs)], alpha=0.7)
+    
+    for bar, epoch in zip(bars, convergence_epochs):
+        axes[0, 1].text(bar.get_x() + bar.get_width()/2., bar.get_height(),
+                       f'{epoch}', ha='center', va='bottom')
+    
+    axes[0, 1].set_title('Convergence Speed')
+    axes[0, 1].set_xlabel('Model')
+    axes[0, 1].set_ylabel('Epochs to Convergence')
+    axes[0, 1].set_xticks(range(len(model_labels)))
+    axes[0, 1].set_xticklabels(model_labels, rotation=45, ha='right')
+    axes[0, 1].grid(True, alpha=0.3, axis='y')
+    
+    # Final performance comparison
+    final_losses = [histories[name]['train_loss'][-1] for name in model_names]
+    bars = axes[1, 0].bar(range(len(final_losses)), final_losses, 
+                         color=colors[:len(final_losses)], alpha=0.7)
+    
+    for bar, loss in zip(bars, final_losses):
+        axes[1, 0].text(bar.get_x() + bar.get_width()/2., bar.get_height(),
+                       f'{loss:.4f}', ha='center', va='bottom')
+    
+    axes[1, 0].set_title('Final Training Loss')
+    axes[1, 0].set_xlabel('Model')
+    axes[1, 0].set_ylabel('Final Loss')
+    axes[1, 0].set_xticks(range(len(model_labels)))
+    axes[1, 0].set_xticklabels(model_labels, rotation=45, ha='right')
+    axes[1, 0].grid(True, alpha=0.3, axis='y')
+    
+    # Loss improvement analysis
+    improvement_rates = []
+    for name in model_names:
+        train_loss = histories[name]['train_loss']
+        initial_loss = train_loss[0]
+        final_loss = train_loss[-1]
+        improvement = (initial_loss - final_loss) / initial_loss * 100
+        improvement_rates.append(improvement)
+    
+    bars = axes[1, 1].bar(range(len(improvement_rates)), improvement_rates, 
+                         color=colors[:len(improvement_rates)], alpha=0.7)
+    
+    for bar, rate in zip(bars, improvement_rates):
+        axes[1, 1].text(bar.get_x() + bar.get_width()/2., bar.get_height(),
+                       f'{rate:.1f}%', ha='center', va='bottom')
+    
+    axes[1, 1].set_title('Loss Improvement Rate')
+    axes[1, 1].set_xlabel('Model')
+    axes[1, 1].set_ylabel('Improvement (%)')
+    axes[1, 1].set_xticks(range(len(model_labels)))
+    axes[1, 1].set_xticklabels(model_labels, rotation=45, ha='right')
+    axes[1, 1].grid(True, alpha=0.3, axis='y')
+    
+    plt.suptitle('Convergence Analysis', fontsize=16)
+    plt.tight_layout()
     plt.show() 

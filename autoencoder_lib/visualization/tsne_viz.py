@@ -446,7 +446,8 @@ def visualize_side_by_side_latent_spaces(
     max_samples: int = 500,
     device: str = 'cpu',
     figure_size: Tuple[int, int] = (20, 16),
-    grid_layout: str = "2x2"
+    grid_layout: str = "2x2",
+    verbose: bool = False
 ) -> Tuple[Optional[float], Optional[float]]:
     """
     Compute and visualize t-SNE projections of train and test data with both latent space and reconstructed images.
@@ -464,6 +465,7 @@ def visualize_side_by_side_latent_spaces(
         device: Device to run model on
         figure_size: Size of the figure
         grid_layout: Layout type ("1x2" for side-by-side latent only, "2x2" for latent + reconstructed)
+        verbose: Whether to print progress messages (default: False for cleaner output)
         
     Returns:
         Tuple of (train_silhouette, test_silhouette) scores
@@ -508,7 +510,8 @@ def visualize_side_by_side_latent_spaces(
         train_plot_only = min(max_samples, encoded_train.shape[0])
         test_plot_only = min(max_samples, encoded_test.shape[0])
         
-        print(f"Running t-SNE on {train_plot_only} train samples and {test_plot_only} test samples...")
+        if verbose:
+            print(f"Running t-SNE on {train_plot_only} train samples and {test_plot_only} test samples...")
         
         # Apply t-SNE with consistent parameters
         # Train data t-SNE
@@ -528,27 +531,32 @@ def visualize_side_by_side_latent_spaces(
         if len(np.unique(train_plot_labels)) > 1:
             try:
                 train_silhouette = silhouette_score(train_low_dim_embs, train_plot_labels)
-                print(f"Train data silhouette score: {train_silhouette:.6f}")
+                if verbose:
+                    print(f"Train data silhouette score: {train_silhouette:.6f}")
             except Exception as e:
-                print(f"Could not calculate train silhouette score: {e}")
+                if verbose:
+                    print(f"Could not calculate train silhouette score: {e}")
         
         test_silhouette = None
         if len(np.unique(test_plot_labels)) > 1:
             try:
                 test_silhouette = silhouette_score(test_low_dim_embs, test_plot_labels)
-                print(f"Test data silhouette score: {test_silhouette:.6f}")
+                if verbose:
+                    print(f"Test data silhouette score: {test_silhouette:.6f}")
                 
                 # Check if it matches original silhouette
-                if orig_silhouette is not None:
+                if orig_silhouette is not None and verbose:
                     similarity = 100 - abs(test_silhouette - orig_silhouette) * 100
                     print(f"Similarity to original score: {similarity:.2f}%")
             except Exception as e:
-                print(f"Could not calculate test silhouette score: {e}")
+                if verbose:
+                    print(f"Could not calculate test silhouette score: {e}")
         
         # Determine layout based on grid_layout parameter
         if grid_layout == "2x2":
             # Generate reconstructed images for both train and test data
-            print("Generating reconstructed images for t-SNE analysis...")
+            if verbose:
+                print("Generating reconstructed images for t-SNE analysis...")
             
             with torch.no_grad():
                 # Get reconstructed train data
@@ -566,7 +574,8 @@ def visualize_side_by_side_latent_spaces(
                 test_reconstructed = test_reconstructed.view(test_reconstructed.size(0), -1).detach().cpu().numpy()
             
             # Compute t-SNE for reconstructed images
-            print("Computing t-SNE for reconstructed images...")
+            if verbose:
+                print("Computing t-SNE for reconstructed images...")
             train_recon_tsne = TSNE(perplexity=min(30, len(train_reconstructed[:train_plot_only])-1), 
                                    n_components=2, init='pca', max_iter=5000, random_state=42)
             train_recon_low_dim = train_recon_tsne.fit_transform(train_reconstructed[:train_plot_only])

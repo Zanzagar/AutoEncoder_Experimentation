@@ -839,3 +839,256 @@ def plot_tsne_visualization(
         print(f"Saved t-SNE visualization to: {save_path}")
     
     plt.show() 
+
+
+def visualize_three_way_latent_spaces(
+    model,
+    train_data: Union[torch.Tensor, np.ndarray],
+    train_labels: Union[torch.Tensor, np.ndarray],
+    validation_data: Union[torch.Tensor, np.ndarray],
+    validation_labels: Union[torch.Tensor, np.ndarray],
+    test_data: Union[torch.Tensor, np.ndarray],
+    test_labels: Union[torch.Tensor, np.ndarray],
+    class_names: Optional[List[str]] = None,
+    title_suffix: str = "Comprehensive Final Evaluation",
+    max_samples: int = 500,
+    device: str = 'cpu',
+    figure_size: Tuple[int, int] = (24, 16),
+    grid_layout: str = "3x2",
+    verbose: bool = False
+) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+    """
+    Visualize train, validation, and test latent spaces together in a comprehensive view.
+    
+    This function provides the ultimate final evaluation by showing all three data splits:
+    - Training data (used for model training)
+    - Validation data (used for monitoring during training)  
+    - Test data (held out for final unbiased evaluation)
+    
+    Args:
+        model: Trained autoencoder model
+        train_data: Training data tensor
+        train_labels: Training labels
+        validation_data: Validation data tensor
+        validation_labels: Validation labels
+        test_data: Test data tensor (final evaluation only)
+        test_labels: Test labels
+        class_names: Optional list of class names
+        title_suffix: Title for the overall visualization
+        max_samples: Maximum samples per dataset to visualize
+        device: Device to run computations on
+        figure_size: Figure size for the plot
+        grid_layout: Layout format ("3x2" for latent+reconstructed, "3x1" for latent only)
+        verbose: Whether to print detailed information
+        
+    Returns:
+        Tuple of (train_silhouette, validation_silhouette, test_silhouette)
+    """
+    import torch
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from sklearn.manifold import TSNE
+    from sklearn.metrics import silhouette_score
+    
+    if verbose:
+        print(f"🔬 Generating comprehensive 3-way visualization: Train/Validation/Test")
+        print(f"📊 Layout: {grid_layout}, Max samples per dataset: {max_samples}")
+    
+    # Convert to tensors if needed
+    train_data = torch.tensor(train_data).float() if not isinstance(train_data, torch.Tensor) else train_data.float()
+    validation_data = torch.tensor(validation_data).float() if not isinstance(validation_data, torch.Tensor) else validation_data.float()
+    test_data = torch.tensor(test_data).float() if not isinstance(test_data, torch.Tensor) else test_data.float()
+    
+    train_labels = torch.tensor(train_labels).long() if not isinstance(train_labels, torch.Tensor) else train_labels.long()
+    validation_labels = torch.tensor(validation_labels).long() if not isinstance(validation_labels, torch.Tensor) else validation_labels.long()
+    test_labels = torch.tensor(test_labels).long() if not isinstance(test_labels, torch.Tensor) else test_labels.long()
+    
+    # Move to device
+    device_obj = torch.device(device)
+    model = model.to(device_obj)
+    train_data_device = train_data.to(device_obj)
+    validation_data_device = validation_data.to(device_obj)
+    test_data_device = test_data.to(device_obj)
+    
+    # Limit samples for visualization performance
+    train_plot_only = min(max_samples, len(train_data))
+    validation_plot_only = min(max_samples, len(validation_data))
+    test_plot_only = min(max_samples, len(test_data))
+    
+    model.eval()
+    with torch.no_grad():
+        # Get latent representations for all three datasets
+        try:
+            train_encoded, _ = model(train_data_device[:train_plot_only])
+        except:
+            train_encoded = model.encode(train_data_device[:train_plot_only])
+        train_encoded = train_encoded.detach().cpu().numpy()
+        
+        try:
+            validation_encoded, _ = model(validation_data_device[:validation_plot_only])
+        except:
+            validation_encoded = model.encode(validation_data_device[:validation_plot_only])
+        validation_encoded = validation_encoded.detach().cpu().numpy()
+        
+        try:
+            test_encoded, _ = model(test_data_device[:test_plot_only])
+        except:
+            test_encoded = model.encode(test_data_device[:test_plot_only])
+        test_encoded = test_encoded.detach().cpu().numpy()
+    
+    if verbose:
+        print(f"Train latent: shape={train_encoded.shape}, std={train_encoded.std():.4f}")
+        print(f"Validation latent: shape={validation_encoded.shape}, std={validation_encoded.std():.4f}")
+        print(f"Test latent: shape={test_encoded.shape}, std={test_encoded.std():.4f}")
+    
+    # Apply t-SNE to each dataset with different seeds for variety
+    train_perplexity = min(30, max(5, len(train_encoded)//4))
+    train_tsne = TSNE(perplexity=train_perplexity, n_components=2, init='pca', max_iter=5000, random_state=42)
+    train_low_dim = train_tsne.fit_transform(train_encoded)
+    train_plot_labels = train_labels[:train_plot_only].cpu().numpy()
+    
+    validation_perplexity = min(30, max(5, len(validation_encoded)//4))
+    validation_tsne = TSNE(perplexity=validation_perplexity, n_components=2, init='pca', max_iter=5000, random_state=123)
+    validation_low_dim = validation_tsne.fit_transform(validation_encoded)
+    validation_plot_labels = validation_labels[:validation_plot_only].cpu().numpy()
+    
+    test_perplexity = min(30, max(5, len(test_encoded)//4))
+    test_tsne = TSNE(perplexity=test_perplexity, n_components=2, init='pca', max_iter=5000, random_state=456)
+    test_low_dim = test_tsne.fit_transform(test_encoded)
+    test_plot_labels = test_labels[:test_plot_only].cpu().numpy()
+    
+    # Calculate silhouette scores
+    def safe_silhouette(embeddings, labels):
+        try:
+            if len(np.unique(labels)) > 1:
+                return silhouette_score(embeddings, labels)
+        except:
+            pass
+        return None
+    
+    train_silhouette = safe_silhouette(train_low_dim, train_plot_labels)
+    validation_silhouette = safe_silhouette(validation_low_dim, validation_plot_labels)
+    test_silhouette = safe_silhouette(test_low_dim, test_plot_labels)
+    
+    if verbose:
+        print(f"Silhouette scores - Train: {train_silhouette:.4f if train_silhouette else 'N/A'}, "
+              f"Validation: {validation_silhouette:.4f if validation_silhouette else 'N/A'}, "
+              f"Test: {test_silhouette:.4f if test_silhouette else 'N/A'}")
+    
+    # Create visualization based on layout
+    if grid_layout == "3x2":
+        # Generate reconstructions for all datasets
+        with torch.no_grad():
+            try:
+                _, train_reconstructed = model(train_data_device[:train_plot_only])
+            except:
+                train_reconstructed = model.decode(train_encoded)
+            train_reconstructed = train_reconstructed.view(train_reconstructed.size(0), -1).detach().cpu().numpy()
+            
+            try:
+                _, validation_reconstructed = model(validation_data_device[:validation_plot_only])
+            except:
+                validation_reconstructed = model.decode(validation_encoded)
+            validation_reconstructed = validation_reconstructed.view(validation_reconstructed.size(0), -1).detach().cpu().numpy()
+            
+            try:
+                _, test_reconstructed = model(test_data_device[:test_plot_only])
+            except:
+                test_reconstructed = model.decode(test_encoded)
+            test_reconstructed = test_reconstructed.view(test_reconstructed.size(0), -1).detach().cpu().numpy()
+        
+        # Compute t-SNE for reconstructions
+        train_recon_perplexity = min(30, max(5, len(train_reconstructed)//4))
+        train_recon_tsne = TSNE(perplexity=train_recon_perplexity, n_components=2, init='pca', max_iter=5000, random_state=789)
+        train_recon_low_dim = train_recon_tsne.fit_transform(train_reconstructed)
+        
+        validation_recon_perplexity = min(30, max(5, len(validation_reconstructed)//4))
+        validation_recon_tsne = TSNE(perplexity=validation_recon_perplexity, n_components=2, init='pca', max_iter=5000, random_state=987)
+        validation_recon_low_dim = validation_recon_tsne.fit_transform(validation_reconstructed)
+        
+        test_recon_perplexity = min(30, max(5, len(test_reconstructed)//4))
+        test_recon_tsne = TSNE(perplexity=test_recon_perplexity, n_components=2, init='pca', max_iter=5000, random_state=654)
+        test_recon_low_dim = test_recon_tsne.fit_transform(test_reconstructed)
+        
+        # Create 3x2 grid (3 datasets x 2 views each)
+        fig, axes = plt.subplots(3, 2, figsize=figure_size)
+        
+        datasets = [
+            ("Train", train_low_dim, train_plot_labels, train_silhouette, train_recon_low_dim),
+            ("Validation", validation_low_dim, validation_plot_labels, validation_silhouette, validation_recon_low_dim),
+            ("Test", test_low_dim, test_plot_labels, test_silhouette, test_recon_low_dim)
+        ]
+        
+        for i, (dataset_name, latent_embs, labels, silhouette, recon_embs) in enumerate(datasets):
+            unique_labels = np.unique(labels)
+            colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_labels)))
+            
+            # Plot latent space (left column)
+            for j, label in enumerate(unique_labels):
+                mask = labels == label
+                axes[i, 0].scatter(
+                    latent_embs[mask, 0], latent_embs[mask, 1],
+                    c=[colors[j]], alpha=0.7, s=50, edgecolors='none',
+                    label=class_names[label] if class_names is not None else f"Class {label}"
+                )
+            
+            title = f"{dataset_name} Latent Space ({len(latent_embs)} images)"
+            if silhouette is not None:
+                title += f"\nSilhouette: {silhouette:.3f}"
+            axes[i, 0].set_title(title, fontsize=12)
+            axes[i, 0].legend(fontsize=8)
+            axes[i, 0].grid(alpha=0.3)
+            axes[i, 0].set_xlabel('t-SNE Component 1')
+            axes[i, 0].set_ylabel('t-SNE Component 2')
+            
+            # Plot reconstructed space (right column)
+            for j, label in enumerate(unique_labels):
+                mask = labels == label
+                axes[i, 1].scatter(
+                    recon_embs[mask, 0], recon_embs[mask, 1],
+                    c=[colors[j]], alpha=0.7, s=50, edgecolors='none',
+                    label=class_names[label] if class_names is not None else f"Class {label}"
+                )
+            
+            axes[i, 1].set_title(f"{dataset_name} Reconstructed Images ({len(recon_embs)} images)", fontsize=12)
+            axes[i, 1].legend(fontsize=8)
+            axes[i, 1].grid(alpha=0.3)
+            axes[i, 1].set_xlabel('t-SNE Component 1')
+            axes[i, 1].set_ylabel('t-SNE Component 2')
+            
+    else:  # 3x1 layout (latent spaces only)
+        fig, axes = plt.subplots(3, 1, figsize=figure_size)
+        
+        datasets = [
+            ("Train", train_low_dim, train_plot_labels, train_silhouette),
+            ("Validation", validation_low_dim, validation_plot_labels, validation_silhouette),
+            ("Test", test_low_dim, test_plot_labels, test_silhouette)
+        ]
+        
+        for i, (dataset_name, latent_embs, labels, silhouette) in enumerate(datasets):
+            unique_labels = np.unique(labels)
+            colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_labels)))
+            
+            for j, label in enumerate(unique_labels):
+                mask = labels == label
+                axes[i].scatter(
+                    latent_embs[mask, 0], latent_embs[mask, 1],
+                    c=[colors[j]], alpha=0.7, s=50, edgecolors='none',
+                    label=class_names[label] if class_names is not None else f"Class {label}"
+                )
+            
+            title = f"{dataset_name} Latent Space ({len(latent_embs)} images)"
+            if silhouette is not None:
+                title += f" - Silhouette: {silhouette:.3f}"
+            axes[i].set_title(title, fontsize=14)
+            axes[i].legend(fontsize=10)
+            axes[i].grid(alpha=0.3)
+            axes[i].set_xlabel('t-SNE Component 1')
+            axes[i].set_ylabel('t-SNE Component 2')
+    
+    # Add overall title
+    fig.suptitle(f"{title_suffix} - Train/Validation/Test Comparison", fontsize=16)
+    plt.tight_layout()
+    plt.show()
+    
+    return train_silhouette, validation_silhouette, test_silhouette 

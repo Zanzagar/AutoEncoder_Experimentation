@@ -476,6 +476,32 @@ class ExperimentRunner:
                 final_test_loss, final_test_silhouette = self._perform_test_evaluation(
                     model, train_data_tensor, train_labels_tensor, test_data, test_labels, class_names, loss_func
                 )
+                
+                # Generate comprehensive 3-way visualization (train/validation/test)
+                print("\n" + "="*70)
+                print("🎯 ULTIMATE COMPREHENSIVE VISUALIZATION")
+                print("="*70)
+                print("📊 Showing all three data splits together for complete evaluation")
+                
+                try:
+                    comprehensive_train_sil, comprehensive_val_sil, comprehensive_test_sil = self.visualize_comprehensive_three_way(
+                        model, train_data_tensor, train_labels_tensor, validation_data, validation_labels,
+                        test_data, test_labels, class_names, "🎯 ULTIMATE FINAL EVALUATION"
+                    )
+                    
+                    print(f"🎯 Comprehensive Results Summary:")
+                    print(f"   📈 Train Silhouette:      {comprehensive_train_sil:.4f if comprehensive_train_sil else 'N/A'}")
+                    print(f"   📊 Validation Silhouette: {comprehensive_val_sil:.4f if comprehensive_val_sil else 'N/A'}")  
+                    print(f"   🧪 Test Silhouette:       {comprehensive_test_sil:.4f if comprehensive_test_sil else 'N/A'}")
+                    print(f"   💥 Final Test Loss:       {final_test_loss:.6f}")
+                    
+                except Exception as e:
+                    print(f"⚠️ Could not generate comprehensive 3-way visualization: {e}")
+                
+                print("="*70)
+                print("✅ COMPREHENSIVE EVALUATION COMPLETE")
+                print("="*70)
+                
             else:
                 print("📊 No test data provided - using validation performance as final metric")
         
@@ -911,4 +937,52 @@ class ExperimentRunner:
                 
             except Exception as e:
                 print(f"⚠️  Error in test visualization: {e}")
-                return test_loss, None 
+                return test_loss, None
+    
+    def visualize_comprehensive_three_way(self, model, train_data_tensor, train_labels_tensor,
+                                         validation_data, validation_labels, test_data, test_labels,
+                                         class_names=None, title_suffix="Final Comprehensive Evaluation"):
+        """
+        Create comprehensive 3-way visualization showing train/validation/test all together.
+        
+        This provides the ultimate final evaluation view by showing all three data splits
+        and their latent space representations side by side.
+        
+        Args:
+            model: Trained autoencoder model
+            train_data_tensor: Full training data
+            train_labels_tensor: Full training labels
+            validation_data: Full validation data
+            validation_labels: Full validation labels
+            test_data: Test data (final evaluation only)
+            test_labels: Test labels
+            class_names: List of class names
+            title_suffix: Title for the visualization
+            
+        Returns:
+            Tuple of (train_silhouette, validation_silhouette, test_silhouette)
+        """
+        try:
+            from ..visualization.tsne_viz import visualize_three_way_latent_spaces
+            
+            print("🔬 Generating comprehensive 3-way train/validation/test visualization...")
+            
+            return visualize_three_way_latent_spaces(
+                model=model,
+                train_data=train_data_tensor,
+                train_labels=train_labels_tensor,
+                validation_data=validation_data,
+                validation_labels=validation_labels,
+                test_data=test_data,
+                test_labels=test_labels,
+                class_names=class_names,
+                title_suffix=title_suffix,
+                device=str(self.device),
+                figure_size=(24, 16),
+                grid_layout="3x2",  # Show both latent and reconstructed views
+                verbose=True
+            )
+            
+        except Exception as e:
+            print(f"⚠️ Warning: Could not create 3-way visualization: {e}")
+            return None, None, None 

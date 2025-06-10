@@ -478,32 +478,25 @@ class ExperimentRunner:
                 )
                 
                 # Generate comprehensive 3-way visualization (train/validation/test)
-                print("\n" + "="*70)
-                print("🎯 ULTIMATE COMPREHENSIVE VISUALIZATION")
-                print("="*70)
-                print("📊 Showing all three data splits together for complete evaluation")
+                print("Generating comprehensive train/validation/test visualization...")
                 
                 try:
-                    comprehensive_train_sil, comprehensive_val_sil, comprehensive_test_sil = self.visualize_comprehensive_three_way(
-                        model, train_data_tensor, train_labels_tensor, validation_data, validation_labels,
-                        test_data, test_labels, class_names, "🎯 ULTIMATE FINAL EVALUATION"
+                    train_silhouette_final, validation_silhouette_final, test_silhouette_final = self.visualize_comprehensive_three_way(
+                        model, train_data_tensor, train_labels_tensor, 
+                        validation_data, validation_labels, test_data, test_labels,
+                        class_names, "Comprehensive Final Evaluation"
                     )
                     
-                    print(f"🎯 Comprehensive Results Summary:")
-                    print(f"   📈 Train Silhouette:      {comprehensive_train_sil:.4f if comprehensive_train_sil else 'N/A'}")
-                    print(f"   📊 Validation Silhouette: {comprehensive_val_sil:.4f if comprehensive_val_sil else 'N/A'}")  
-                    print(f"   🧪 Test Silhouette:       {comprehensive_test_sil:.4f if comprehensive_test_sil else 'N/A'}")
-                    print(f"   💥 Final Test Loss:       {final_test_loss:.6f}")
+                    if verbose:
+                        print("Final silhouette scores:")
+                        print(f"  Training: {train_silhouette_final:.4f}" if train_silhouette_final else "  Training: N/A")
+                        print(f"  Validation: {validation_silhouette_final:.4f}" if validation_silhouette_final else "  Validation: N/A")
+                        print(f"  Test: {test_silhouette_final:.4f}" if test_silhouette_final else "  Test: N/A")
                     
                 except Exception as e:
-                    print(f"⚠️ Could not generate comprehensive 3-way visualization: {e}")
-                
-                print("="*70)
-                print("✅ COMPREHENSIVE EVALUATION COMPLETE")
-                print("="*70)
-                
+                    print(f"Error during comprehensive visualization: {str(e)}")
             else:
-                print("📊 No test data provided - using validation performance as final metric")
+                print("No test data provided - using validation performance as final metric")
         
         # Final visualization and silhouette calculation (using validation data for visualization)
         final_train_silhouette, final_validation_silhouette = self._perform_final_evaluation(
@@ -887,56 +880,49 @@ class ExperimentRunner:
             train_labels_tensor: Full training labels
             test_data: Test dataset (never seen during training)
             test_labels: Test labels
-            class_names: List of class names
-            loss_func: Loss function to evaluate test performance
+            class_names: List of class names for visualization
+            loss_func: Loss function for evaluation
             
         Returns:
-            Tuple of (test_loss, test_silhouette)
+            Tuple of (test_loss, test_silhouette_score)
         """
-        print("\n" + "="*50)
-        print("🧪 FINAL TEST EVALUATION (UNBIASED)")
-        print("="*50)
-        print("⚠️  This is the first and only time test data is used!")
-        print("📊 Generating comprehensive test visualizations...")
+        print("Performing final test evaluation...")
         
         model.eval()
         with torch.no_grad():
             # Calculate test loss
-            test_loss = self.memory_efficient_evaluation(model, test_data, loss_func)
+            if hasattr(model, 'forward'):
+                try:
+                    _, test_reconstructed = model(test_data)
+                    test_loss = loss_func(test_reconstructed, test_data).item()
+                except:
+                    test_encoded = model.encode(test_data)
+                    test_reconstructed = model.decode(test_encoded)
+                    test_loss = loss_func(test_reconstructed, test_data).item()
+            else:
+                test_encoded = model.encode(test_data)
+                test_reconstructed = model.decode(test_encoded)
+                test_loss = loss_func(test_reconstructed, test_data).item()
             
-            # Select test visualization samples
-            test_view_data, test_view_labels, _ = self.select_visualization_samples(
-                test_data, test_labels, class_names
-            )
-            
-            # Get test reconstructions
-            _, test_decoded = model(test_view_data)
-            
-            # Show final test reconstructions
-            print("🔍 Test Data Reconstructions (final unbiased evaluation):")
-            self._show_reconstructions(
-                test_view_data, test_decoded, test_view_labels, class_names,
-                '🧪 FINAL TEST EVALUATION - Original vs. Reconstructed (UNBIASED)'
-            )
-            
-            # Comprehensive test vs train latent space visualization
-            print("🔍 Test vs Train Latent Space Analysis (final unbiased evaluation):")
+            # Train vs Test latent space visualization
+            print("Train vs Test Latent Space Analysis:")
             try:
                 train_silhouette, test_silhouette = self.visualize_latent_space_side_by_side(
                     model, train_data_tensor, train_labels_tensor, test_data, test_labels,
-                    class_names, "🧪 FINAL TEST EVALUATION (UNBIASED)", comparison_type="test"
+                    class_names, "Final Test Evaluation", comparison_type="test"
                 )
                 
-                print(f"✅ Final Test Loss: {test_loss:.6f}")
+                print(f"Final Test Loss: {test_loss:.6f}")
                 if test_silhouette is not None:
-                    print(f"✅ Final Test Silhouette Score: {test_silhouette:.4f}")
+                    print(f"Final Test Silhouette Score: {test_silhouette:.4f}")
                 else:
-                    print("⚠️  Test Silhouette Score: N/A (insufficient classes)")
-                    
+                    print("Test Silhouette Score: N/A (insufficient classes or samples)")
+                
                 return test_loss, test_silhouette
                 
             except Exception as e:
-                print(f"⚠️  Error in test visualization: {e}")
+                print(f"Error during test visualization: {str(e)}")
+                print(f"Final Test Loss: {test_loss:.6f}")
                 return test_loss, None
     
     def visualize_comprehensive_three_way(self, model, train_data_tensor, train_labels_tensor,
@@ -952,37 +938,29 @@ class ExperimentRunner:
             model: Trained autoencoder model
             train_data_tensor: Full training data
             train_labels_tensor: Full training labels
-            validation_data: Full validation data
-            validation_labels: Full validation labels
-            test_data: Test data (final evaluation only)
+            validation_data: Validation dataset
+            validation_labels: Validation labels
+            test_data: Test dataset (for final evaluation only)
             test_labels: Test labels
-            class_names: List of class names
-            title_suffix: Title for the visualization
+            class_names: List of class names for visualization
+            title_suffix: Title for the comprehensive visualization
             
         Returns:
             Tuple of (train_silhouette, validation_silhouette, test_silhouette)
         """
-        try:
-            from ..visualization.tsne_viz import visualize_three_way_latent_spaces
-            
-            print("🔬 Generating comprehensive 3-way train/validation/test visualization...")
-            
-            return visualize_three_way_latent_spaces(
-                model=model,
-                train_data=train_data_tensor,
-                train_labels=train_labels_tensor,
-                validation_data=validation_data,
-                validation_labels=validation_labels,
-                test_data=test_data,
-                test_labels=test_labels,
-                class_names=class_names,
-                title_suffix=title_suffix,
-                device=str(self.device),
-                figure_size=(24, 16),
-                grid_layout="3x2",  # Show both latent and reconstructed views
-                verbose=True
-            )
-            
-        except Exception as e:
-            print(f"⚠️ Warning: Could not create 3-way visualization: {e}")
-            return None, None, None 
+        from autoencoder_lib.visualization.tsne_viz import visualize_three_way_latent_spaces
+        
+        return visualize_three_way_latent_spaces(
+            model=model,
+            train_data=train_data_tensor,
+            train_labels=train_labels_tensor,
+            validation_data=validation_data,
+            validation_labels=validation_labels,
+            test_data=test_data,
+            test_labels=test_labels,
+            class_names=class_names,
+            title_suffix=title_suffix,
+            device=str(self.device),
+            figure_size=(20, 12),
+            verbose=False
+        ) 

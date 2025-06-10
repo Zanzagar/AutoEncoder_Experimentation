@@ -21,8 +21,7 @@ import pandas as pd
 from .runner import ExperimentRunner
 from ..visualization.training_viz import plot_systematic_training_curves
 from ..visualization import (
-    plot_performance_grid,  
-    plot_latent_dimension_analysis
+    plot_performance_grid
 )
 from .experiment_reporting import (
     create_comparison_tables,
@@ -193,7 +192,7 @@ def run_single_experiment(
             )
             
             # Prepare data loaders
-            train_loader, test_data, test_labels, class_names = _prepare_data_from_dataset(
+            train_loader, validation_data, validation_labels, test_data, test_labels, class_names = _prepare_data_from_dataset(
                 dataset_info, dataset_config or {}, batch_size, device
             )
             
@@ -224,18 +223,20 @@ def run_single_experiment(
             
             # Train the model
             if verbose:
-                print("Starting training...")
+                print("Starting training with proper validation monitoring...")
             
             trained_model, history = runner.train_autoencoder(
                 model=model,
                 train_loader=train_loader,
-                test_data=test_data,
-                test_labels=test_labels,
+                validation_data=validation_data,  # ✅ Use validation data for monitoring
+                validation_labels=validation_labels,  # ✅ Use validation labels for monitoring
                 epochs=epochs,
                 learning_rate=learning_rate,
                 class_names=class_names,
                 save_model=save_model,
-                experiment_name=experiment_name
+                experiment_name=experiment_name,
+                test_data=test_data,  # ✅ Keep test data separate for final evaluation only
+                test_labels=test_labels  # ✅ Keep test labels separate for final evaluation only
             )
             
             # Extract final metrics from history
@@ -449,7 +450,7 @@ def run_systematic_experiments(
         # Extract test data from dataset_info for reconstruction analysis
         # We need to prepare data once to get test_data, test_labels, class_names
         device_obj = torch.device(device or ('cuda' if torch.cuda.is_available() else 'cpu'))
-        _, test_data, test_labels, class_names = _prepare_data_from_dataset(
+        _, _, _, test_data, test_labels, class_names = _prepare_data_from_dataset(
             dataset_info=dataset_info,
             dataset_config={},  # Empty config since we're just extracting existing data
             batch_size=batch_size,
@@ -720,8 +721,13 @@ def _prepare_data_from_dataset(
     dataset_config: Dict[str, Any],
     batch_size: int,
     device: torch.device
-) -> Tuple[DataLoader, torch.Tensor, torch.Tensor, List[str]]:
-    """Prepare data loaders from generated dataset."""
+) -> Tuple[DataLoader, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, List[str]]:
+    """
+    Prepare data loaders from generated dataset with proper 3-way split.
+    
+    Returns:
+        Tuple of (train_loader, validation_data, validation_labels, test_data, test_labels, class_names)
+    """
     from PIL import Image
     import os
     
@@ -739,9 +745,12 @@ def _prepare_data_from_dataset(
     if not class_names:
         raise ValueError("No class names found in dataset_info")
     
-    # Load training and test data
+    # Load training, validation, and test data
     train_data, train_labels = [], []
+    validation_data, validation_labels = [], []
     test_data, test_labels = [], []
+    
+    print("🔄 Creating proper 3-way data split for training...")
     
     for class_idx, class_name in enumerate(class_names):
         class_dir = Path(dataset_dir) / class_name
@@ -749,10 +758,16 @@ def _prepare_data_from_dataset(
         if class_dir.exists():
             image_files = list(class_dir.glob("*.png"))
             
-            # Simple 80/20 train/test split
-            split_point = int(len(image_files) * 0.8)
-            train_files = image_files[:split_point]
-            test_files = image_files[split_point:]
+            # Proper 3-way split: 70% train, 15% validation, 15% test
+            total_files = len(image_files)
+            train_split = int(total_files * 0.70)
+            val_split = int(total_files * 0.85)  # 70% + 15% = 85%
+            
+            train_files = image_files[:train_split]
+            val_files = image_files[train_split:val_split]
+            test_files = image_files[val_split:]
+            
+            print(f"  {class_name}: {len(train_files)} train, {len(val_files)} validation, {len(test_files)} test")
             
             # Load training images
             for img_file in train_files:
@@ -760,6 +775,13 @@ def _prepare_data_from_dataset(
                 img_array = np.array(img, dtype=np.float32) / 255.0
                 train_data.append(img_array)
                 train_labels.append(class_idx)
+            
+            # Load validation images
+            for img_file in val_files:
+                img = Image.open(img_file).convert('L')
+                img_array = np.array(img, dtype=np.float32) / 255.0
+                validation_data.append(img_array)
+                validation_labels.append(class_idx)
             
             # Load test images
             for img_file in test_files:
@@ -773,17 +795,34 @@ def _prepare_data_from_dataset(
     if not train_data:
         raise ValueError(f"No training data found in {dataset_dir}")
     
+    if not validation_data:
+        raise ValueError(f"No validation data found in {dataset_dir}")
+    
     # Convert to tensors
     train_data = torch.tensor(np.array(train_data), dtype=torch.float32).unsqueeze(1)
     train_labels = torch.tensor(train_labels, dtype=torch.long)
+    validation_data = torch.tensor(np.array(validation_data), dtype=torch.float32).unsqueeze(1)
+    validation_labels = torch.tensor(validation_labels, dtype=torch.long)
     test_data = torch.tensor(np.array(test_data), dtype=torch.float32).unsqueeze(1)
     test_labels = torch.tensor(test_labels, dtype=torch.long)
     
-    # Create DataLoader
+    # Create DataLoader for training only
     train_dataset = TensorDataset(train_data, train_data, train_labels)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     
-    return train_loader, test_data.to(device), test_labels.to(device), class_names
+    print(f"✅ Data split complete:")
+    print(f"   • Training: {len(train_data)} samples")
+    print(f"   • Validation: {len(validation_data)} samples (for monitoring)")
+    print(f"   • Test: {len(test_data)} samples (for final evaluation)")
+    
+    return (
+        train_loader, 
+        validation_data.to(device), 
+        validation_labels.to(device),
+        test_data.to(device), 
+        test_labels.to(device), 
+        class_names
+    )
 
 
 def _analyze_systematic_results(successful_results: List[Dict[str, Any]]) -> Dict[str, Any]:

@@ -337,7 +337,6 @@ class ExperimentRunner:
         
         # Training loop
         start_time = time.time()
-        final_visualization_done = False
         
         for epoch in range(epochs):
             model.train()
@@ -369,31 +368,26 @@ class ExperimentRunner:
                 epoch_loss += loss.item()
                 batches += 1
                 
-                # Check if visualization should be performed
+                # Check if visualization should be performed (but NOT on final step to avoid duplication)
                 is_final_step = (epoch == epochs - 1) and (step == len(train_loader) - 1)
-                should_visualize = (step % visualization_interval == 0 and epoch in key_epochs) or is_final_step
+                should_visualize = (step % visualization_interval == 0 and epoch in key_epochs) and not is_final_step
                 
                 if should_visualize:
-                    if is_final_step:
-                        print(f"Performing final visualization at epoch {epoch+1}/{epochs}, step {step}")
-                        final_visualization_done = True
-                    
                     model.eval()
                     test_loss = self.memory_efficient_evaluation(model, test_data, loss_func)
-                    print(f'Epoch: {epoch+1}/{epochs}, Step: {step} | train loss: {loss.item():.4f} | test loss: {test_loss:.4f}')
+                    print(f'Epoch: {epoch+1}/{epochs}, Step: {step} | batch loss: {loss.item():.4f} | test loss: {test_loss:.4f}')
                     
                     # Record metrics
                     history['train_loss'].append(loss.item())
                     history['test_loss'].append(test_loss)
                     
-                    # Visualizations during training (except final step to avoid duplication)
-                    if not is_final_step:
-                        self._perform_training_visualizations(
-                            model, train_view_data, train_view_labels, view_data, view_labels,
-                            train_data_tensor, train_labels_tensor, test_data, test_labels,
-                            class_names, epoch+1, step, history, calculate_train_silhouette, 
-                            calculate_test_silhouette
-                        )
+                    # Perform training visualizations
+                    self._perform_training_visualizations(
+                        model, train_view_data, train_view_labels, view_data, view_labels,
+                        train_data_tensor, train_labels_tensor, test_data, test_labels,
+                        class_names, epoch+1, step, history, calculate_train_silhouette, 
+                        calculate_test_silhouette
+                    )
                     
                     model.train()
             
@@ -410,7 +404,7 @@ class ExperimentRunner:
             scheduler.step(test_loss)
             
             print(f'Epoch {epoch+1}/{epochs} completed | '
-                  f'Train loss: {avg_train_loss:.4f} | '
+                  f'Avg train loss: {avg_train_loss:.4f} | '
                   f'Test loss: {test_loss:.4f}')
         
         # Final evaluation and metrics
@@ -433,7 +427,7 @@ class ExperimentRunner:
         final_train_silhouette, final_test_silhouette = self._perform_final_evaluation(
             model, train_data_tensor, train_labels_tensor, test_data, test_labels,
             class_names, calculate_train_silhouette, calculate_test_silhouette,
-            final_visualization_done, train_view_data, train_view_labels, view_data, view_labels
+            train_view_data, train_view_labels, view_data, view_labels
         )
         
         # CONSOLIDATED FINAL RESULTS SUMMARY
@@ -518,8 +512,8 @@ class ExperimentRunner:
     
     def _perform_final_evaluation(self, model, train_data_tensor, train_labels_tensor,
                                 test_data, test_labels, class_names, calculate_train_silhouette,
-                                calculate_test_silhouette, final_visualization_done,
-                                train_view_data, train_view_labels, view_data, view_labels):
+                                calculate_test_silhouette, train_view_data, train_view_labels, 
+                                view_data, view_labels):
         """Perform final evaluation and visualization."""
         print("Generating final latent space visualization and metrics")
         

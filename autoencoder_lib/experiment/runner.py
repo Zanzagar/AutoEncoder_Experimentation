@@ -312,7 +312,7 @@ class ExperimentRunner:
         )
         
         # Select visualization samples from validation data
-        view_data, view_labels, view_indices = self.select_visualization_samples(
+        validation_view_data, validation_view_labels, validation_view_indices = self.select_visualization_samples(
             validation_data, validation_labels, class_names
         )
         
@@ -332,7 +332,7 @@ class ExperimentRunner:
             'experiment_name': experiment_name,
             'train_silhouette_scores': [],
             'validation_silhouette_scores': [],
-            'view_indices': view_indices,
+            'view_indices': validation_view_indices,
             'early_stopping_enabled': enable_early_stopping,
             'patience': patience,
             'min_delta': min_delta
@@ -396,7 +396,7 @@ class ExperimentRunner:
                     
                     # Perform training visualizations (use validation data for monitoring)
                     self._perform_training_visualizations(
-                        model, train_view_data, train_view_labels, view_data, view_labels,
+                        model, train_view_data, train_view_labels, validation_view_data, validation_view_labels,
                         train_data_tensor, train_labels_tensor, validation_data, validation_labels,
                         class_names, epoch+1, step, history, calculate_train_silhouette, 
                         calculate_validation_silhouette
@@ -480,7 +480,7 @@ class ExperimentRunner:
         final_train_silhouette, final_validation_silhouette = self._perform_final_evaluation(
             model, train_data_tensor, train_labels_tensor, validation_data, validation_labels,
             class_names, calculate_train_silhouette, calculate_validation_silhouette,
-            train_view_data, train_view_labels, view_data, view_labels, test_data, test_labels
+            train_view_data, train_view_labels, validation_view_data, validation_view_labels, test_data, test_labels
         )
         
         # CONSOLIDATED FINAL RESULTS SUMMARY
@@ -547,14 +547,33 @@ class ExperimentRunner:
         return model, history
     
     def _perform_training_visualizations(self, model, train_view_data, train_view_labels,
-                                       view_data, view_labels, train_data_tensor, train_labels_tensor,
+                                       validation_view_data, validation_view_labels, train_data_tensor, train_labels_tensor,
                                        validation_data, validation_labels, class_names, epoch, step, history,
                                        calculate_train_silhouette, calculate_validation_silhouette):
-        """Perform visualizations during training."""
+        """
+        Perform visualizations during training using train and validation data.
+        
+        Args:
+            model: Current model being trained
+            train_view_data: Selected training samples for visualization
+            train_view_labels: Labels for training visualization samples
+            validation_view_data: Selected validation samples for visualization
+            validation_view_labels: Labels for validation visualization samples
+            train_data_tensor: Full training dataset
+            train_labels_tensor: Full training labels
+            validation_data: Full validation dataset (used for monitoring)
+            validation_labels: Full validation labels
+            class_names: List of class names
+            epoch: Current epoch number
+            step: Current step number
+            history: Training history dictionary
+            calculate_train_silhouette: Whether to calculate training silhouette scores
+            calculate_validation_silhouette: Whether to calculate validation silhouette scores
+        """
         with torch.no_grad():
-            # Get reconstructions for both train and test data
+            # Get reconstructions for both train and validation data
             _, train_decoded = model(train_view_data)
-            _, test_decoded = model(view_data)
+            _, validation_decoded = model(validation_view_data)
             
             # Show training reconstructions
             self._show_reconstructions(
@@ -562,10 +581,10 @@ class ExperimentRunner:
                 f'Training Progress - Epoch {epoch}, Step {step} - Train: Original vs. Reconstructed'
             )
             
-            # Show test reconstructions
+            # Show validation reconstructions (for monitoring during training)
             self._show_reconstructions(
-                view_data, test_decoded, view_labels, class_names,
-                f'Training Progress - Epoch {epoch}, Step {step} - Test: Original vs. Reconstructed'
+                validation_view_data, validation_decoded, validation_view_labels, class_names,
+                f'Training Progress - Epoch {epoch}, Step {step} - Validation: Original vs. Reconstructed'
             )
             
             # Visualize latent space and calculate silhouette scores using proper visualization module
@@ -584,13 +603,13 @@ class ExperimentRunner:
     def _perform_final_evaluation(self, model, train_data_tensor, train_labels_tensor,
                                 validation_data, validation_labels, class_names, calculate_train_silhouette,
                                 calculate_validation_silhouette, train_view_data, train_view_labels, 
-                                view_data, view_labels, test_data=None, test_labels=None):
+                                validation_view_data, validation_view_labels, test_data=None, test_labels=None):
         """Perform final evaluation and visualization using validation data."""
         print("Generating final latent space visualization and metrics")
         
         # Always perform comprehensive final visualization using validation data
         final_train_silhouette, final_validation_silhouette = self.comprehensive_final_visualization(
-            model, train_view_data, train_view_labels, view_data, view_labels,
+            model, train_view_data, train_view_labels, validation_view_data, validation_view_labels,
             train_data_tensor, train_labels_tensor, validation_data, validation_labels, class_names
         )
         
@@ -726,7 +745,7 @@ class ExperimentRunner:
             return None, None
     
     def comprehensive_final_visualization(self, model, train_view_data, train_view_labels, 
-                                        view_data, view_labels, train_data_tensor, train_labels_tensor,
+                                        validation_view_data, validation_view_labels, train_data_tensor, train_labels_tensor,
                                         validation_data, validation_labels, class_names):
         """
         Perform comprehensive final visualization showing both reconstructions and latent spaces.
@@ -735,8 +754,8 @@ class ExperimentRunner:
             model: Trained model
             train_view_data: Selected training data for visualization
             train_view_labels: Labels for training visualization data
-            view_data: Selected validation data for visualization
-            view_labels: Labels for validation visualization data
+            validation_view_data: Selected validation data for visualization
+            validation_view_labels: Labels for validation visualization data
             train_data_tensor: Full training data tensor
             train_labels_tensor: Full training labels tensor
             validation_data: Full validation data tensor
@@ -754,7 +773,7 @@ class ExperimentRunner:
             # 1. Show final reconstructions
             print("Generating final reconstruction visualizations...")
             _, train_decoded = model(train_view_data)
-            _, validation_decoded = model(view_data)
+            _, validation_decoded = model(validation_view_data)
             
             self._show_reconstructions(
                 train_view_data, train_decoded, train_view_labels, class_names,
@@ -762,7 +781,7 @@ class ExperimentRunner:
             )
             
             self._show_reconstructions(
-                view_data, validation_decoded, view_labels, class_names,
+                validation_view_data, validation_decoded, validation_view_labels, class_names,
                 'Final Results - Validation: Original vs. Reconstructed'
             )
             

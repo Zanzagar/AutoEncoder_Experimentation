@@ -774,8 +774,8 @@ class ExperimentRunner:
                 model=model,
                 train_data=train_data,
                 train_labels=train_labels,
-                test_data=comparison_data,  # Parameter name in viz function is 'test_data' but it's context-dependent
-                test_labels=comparison_labels,
+                comparison_data=comparison_data,
+                comparison_labels=comparison_labels,
                 class_names=class_names,
                 title_suffix=context_title,
                 device=str(self.device),

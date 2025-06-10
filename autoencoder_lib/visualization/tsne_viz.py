@@ -438,8 +438,8 @@ def visualize_side_by_side_latent_spaces(
     model,
     train_data: Union[torch.Tensor, np.ndarray],
     train_labels: Union[torch.Tensor, np.ndarray],
-    test_data: Union[torch.Tensor, np.ndarray],
-    test_labels: Union[torch.Tensor, np.ndarray],
+    comparison_data: Union[torch.Tensor, np.ndarray],
+    comparison_labels: Union[torch.Tensor, np.ndarray],
     class_names: Optional[List[str]] = None,
     title_suffix: str = "",
     orig_silhouette: Optional[float] = None,
@@ -447,43 +447,58 @@ def visualize_side_by_side_latent_spaces(
     device: str = 'cpu',
     figure_size: Tuple[int, int] = (20, 16),
     grid_layout: str = "2x2",
-    verbose: bool = False
+    verbose: bool = False,
+    # Legacy parameters for backward compatibility
+    test_data: Union[torch.Tensor, np.ndarray, None] = None,
+    test_labels: Union[torch.Tensor, np.ndarray, None] = None
 ) -> Tuple[Optional[float], Optional[float]]:
     """
-    Compute and visualize t-SNE projections of train and test data with both latent space and reconstructed images.
+    Compute and visualize t-SNE projections of train and comparison data with both latent space and reconstructed images.
+    
+    This function can be used in two contexts:
+    1. During training: comparing train vs validation data for monitoring
+    2. Final evaluation: comparing train vs test data for unbiased assessment
     
     Args:
         model: Trained autoencoder model
         train_data: Training data tensor
         train_labels: Training labels tensor
-        test_data: Test data tensor
-        test_labels: Test labels tensor
+        comparison_data: Comparison data tensor (validation or test data)
+        comparison_labels: Comparison labels tensor (validation or test labels)
         class_names: List of class names for visualization
-        title_suffix: Additional text for plot title
+        title_suffix: Additional text for plot title (should specify context: validation/test)
         orig_silhouette: Original silhouette score from training
         max_samples: Maximum samples to use for t-SNE (for performance)
         device: Device to run model on
         figure_size: Size of the figure
         grid_layout: Layout type ("1x2" for side-by-side latent only, "2x2" for latent + reconstructed)
         verbose: Whether to print progress messages (default: False for cleaner output)
+        test_data: Legacy parameter for backward compatibility (use comparison_data instead)
+        test_labels: Legacy parameter for backward compatibility (use comparison_labels instead)
         
     Returns:
-        Tuple of (train_silhouette, test_silhouette) scores
+        Tuple of (train_silhouette, comparison_silhouette) scores
     """
     import torch
     from sklearn.metrics import silhouette_score
+    
+    # Handle legacy parameters for backward compatibility
+    if test_data is not None and comparison_data is None:
+        comparison_data = test_data
+    if test_labels is not None and comparison_labels is None:
+        comparison_labels = test_labels
     
     model.eval()
     
     # Convert to tensors if needed
     if isinstance(train_data, np.ndarray):
         train_data = torch.FloatTensor(train_data)
-    if isinstance(test_data, np.ndarray):
-        test_data = torch.FloatTensor(test_data)
+    if isinstance(comparison_data, np.ndarray):
+        comparison_data = torch.FloatTensor(comparison_data)
     if isinstance(train_labels, torch.Tensor):
         train_labels = train_labels.detach().cpu().numpy()
-    if isinstance(test_labels, torch.Tensor):
-        test_labels = test_labels.detach().cpu().numpy()
+    if isinstance(comparison_labels, torch.Tensor):
+        comparison_labels = comparison_labels.detach().cpu().numpy()
     
     with torch.no_grad():
         # Process train data
@@ -496,22 +511,22 @@ def visualize_side_by_side_latent_spaces(
         
         encoded_train = encoded_train.view(encoded_train.size(0), -1).detach().cpu().numpy()
         
-        # Process test data
-        test_data_device = test_data.to(device)
+        # Process comparison data
+        comparison_data_device = comparison_data.to(device)
         try:
-            encoded_test, _ = model(test_data_device)
+            encoded_comparison, _ = model(comparison_data_device)
         except:
             # Try alternative interface
-            encoded_test = model.encode(test_data_device)
+            encoded_comparison = model.encode(comparison_data_device)
         
-        encoded_test = encoded_test.view(encoded_test.size(0), -1).detach().cpu().numpy()
+        encoded_comparison = encoded_comparison.view(encoded_comparison.size(0), -1).detach().cpu().numpy()
         
         # Restrict to max samples for performance
         train_plot_only = min(max_samples, encoded_train.shape[0])
-        test_plot_only = min(max_samples, encoded_test.shape[0])
+        comparison_plot_only = min(max_samples, encoded_comparison.shape[0])
         
         if verbose:
-            print(f"Running t-SNE on {train_plot_only} train samples and {test_plot_only} test samples...")
+            print(f"Running t-SNE on {train_plot_only} train samples and {comparison_plot_only} comparison samples...")
         
         # Apply t-SNE with consistent parameters
         # Train data t-SNE
@@ -520,11 +535,11 @@ def visualize_side_by_side_latent_spaces(
         train_low_dim_embs = train_tsne.fit_transform(encoded_train[:train_plot_only])
         train_plot_labels = train_labels[:train_plot_only]
         
-        # Test data t-SNE
-        test_tsne = TSNE(perplexity=min(30, len(encoded_test[:test_plot_only])-1), 
-                        n_components=2, init='pca', max_iter=5000, random_state=42)
-        test_low_dim_embs = test_tsne.fit_transform(encoded_test[:test_plot_only])
-        test_plot_labels = test_labels[:test_plot_only]
+        # Comparison data t-SNE
+        comparison_tsne = TSNE(perplexity=min(30, len(encoded_comparison[:comparison_plot_only])-1), 
+                               n_components=2, init='pca', max_iter=5000, random_state=42)
+        comparison_low_dim_embs = comparison_tsne.fit_transform(encoded_comparison[:comparison_plot_only])
+        comparison_plot_labels = comparison_labels[:comparison_plot_only]
         
         # Calculate silhouette scores
         train_silhouette = None
@@ -537,24 +552,24 @@ def visualize_side_by_side_latent_spaces(
                 if verbose:
                     print(f"Could not calculate train silhouette score: {e}")
         
-        test_silhouette = None
-        if len(np.unique(test_plot_labels)) > 1:
+        comparison_silhouette = None
+        if len(np.unique(comparison_plot_labels)) > 1:
             try:
-                test_silhouette = silhouette_score(test_low_dim_embs, test_plot_labels)
+                comparison_silhouette = silhouette_score(comparison_low_dim_embs, comparison_plot_labels)
                 if verbose:
-                    print(f"Test data silhouette score: {test_silhouette:.6f}")
+                    print(f"Comparison data silhouette score: {comparison_silhouette:.6f}")
                 
                 # Check if it matches original silhouette
                 if orig_silhouette is not None and verbose:
-                    similarity = 100 - abs(test_silhouette - orig_silhouette) * 100
+                    similarity = 100 - abs(comparison_silhouette - orig_silhouette) * 100
                     print(f"Similarity to original score: {similarity:.2f}%")
             except Exception as e:
                 if verbose:
-                    print(f"Could not calculate test silhouette score: {e}")
+                    print(f"Could not calculate comparison silhouette score: {e}")
         
         # Determine layout based on grid_layout parameter
         if grid_layout == "2x2":
-            # Generate reconstructed images for both train and test data
+            # Generate reconstructed images for both train and comparison data
             if verbose:
                 print("Generating reconstructed images for t-SNE analysis...")
             
@@ -566,12 +581,12 @@ def visualize_side_by_side_latent_spaces(
                     train_reconstructed = model.decode(encoded_train)
                 train_reconstructed = train_reconstructed.view(train_reconstructed.size(0), -1).detach().cpu().numpy()
                 
-                # Get reconstructed test data  
+                # Get reconstructed comparison data  
                 try:
-                    _, test_reconstructed = model(test_data_device)
+                    _, comparison_reconstructed = model(comparison_data_device)
                 except:
-                    test_reconstructed = model.decode(encoded_test)
-                test_reconstructed = test_reconstructed.view(test_reconstructed.size(0), -1).detach().cpu().numpy()
+                    comparison_reconstructed = model.decode(encoded_comparison)
+                comparison_reconstructed = comparison_reconstructed.view(comparison_reconstructed.size(0), -1).detach().cpu().numpy()
             
             # Compute t-SNE for reconstructed images
             if verbose:
@@ -580,9 +595,9 @@ def visualize_side_by_side_latent_spaces(
                                    n_components=2, init='pca', max_iter=5000, random_state=42)
             train_recon_low_dim = train_recon_tsne.fit_transform(train_reconstructed[:train_plot_only])
             
-            test_recon_tsne = TSNE(perplexity=min(30, len(test_reconstructed[:test_plot_only])-1), 
-                                  n_components=2, init='pca', max_iter=5000, random_state=42)
-            test_recon_low_dim = test_recon_tsne.fit_transform(test_reconstructed[:test_plot_only])
+            comparison_recon_tsne = TSNE(perplexity=min(30, len(comparison_reconstructed[:comparison_plot_only])-1), 
+                                         n_components=2, init='pca', max_iter=5000, random_state=42)
+            comparison_recon_low_dim = comparison_recon_tsne.fit_transform(comparison_reconstructed[:comparison_plot_only])
             
             # Create 2x2 grid
             fig, axes = plt.subplots(2, 2, figsize=figure_size)
@@ -590,9 +605,9 @@ def visualize_side_by_side_latent_spaces(
             
             # Get colors once
             unique_train_labels = np.unique(train_plot_labels)
-            unique_test_labels = np.unique(test_plot_labels)
+            unique_comparison_labels = np.unique(comparison_plot_labels)
             train_colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_train_labels)))
-            test_colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_test_labels)))
+            comparison_colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_comparison_labels)))
             
             # Plot 1: Train Latent Space
             for i, label in enumerate(unique_train_labels):
@@ -612,21 +627,21 @@ def visualize_side_by_side_latent_spaces(
             axes[0].set_xlabel('t-SNE Component 1')
             axes[0].set_ylabel('t-SNE Component 2')
             
-            # Plot 2: Test Latent Space
-            for i, label in enumerate(unique_test_labels):
-                mask = test_plot_labels == label
+            # Plot 2: Comparison Latent Space
+            for i, label in enumerate(unique_comparison_labels):
+                mask = comparison_plot_labels == label
                 axes[1].scatter(
-                    test_low_dim_embs[mask, 0], test_low_dim_embs[mask, 1],
-                    c=[test_colors[i]],
+                    comparison_low_dim_embs[mask, 0], comparison_low_dim_embs[mask, 1],
+                    c=[comparison_colors[i]],
                     label=class_names[label] if class_names is not None else f"Class {label}",
                     alpha=0.7, s=50, edgecolors='none'
                 )
-            test_title = f"Test Latent Space ({len(test_data)} images)"
-            if test_silhouette is not None:
-                test_title += f"\nSilhouette Score: {test_silhouette:.3f}"
+            comparison_title = f"Comparison Data Latent Space ({len(comparison_data)} images)"
+            if comparison_silhouette is not None:
+                comparison_title += f"\nSilhouette Score: {comparison_silhouette:.3f}"
             if orig_silhouette is not None:
-                test_title += f" (Original: {orig_silhouette:.3f})"
-            axes[1].set_title(test_title, fontsize=12)
+                comparison_title += f" (Original: {orig_silhouette:.3f})"
+            axes[1].set_title(comparison_title, fontsize=12)
             axes[1].legend(fontsize=8)
             axes[1].grid(alpha=0.3)
             axes[1].set_xlabel('t-SNE Component 1')
@@ -647,16 +662,16 @@ def visualize_side_by_side_latent_spaces(
             axes[2].set_xlabel('t-SNE Component 1')
             axes[2].set_ylabel('t-SNE Component 2')
             
-            # Plot 4: Test Reconstructed Images
-            for i, label in enumerate(unique_test_labels):
-                mask = test_plot_labels == label
+            # Plot 4: Comparison Reconstructed Images
+            for i, label in enumerate(unique_comparison_labels):
+                mask = comparison_plot_labels == label
                 axes[3].scatter(
-                    test_recon_low_dim[mask, 0], test_recon_low_dim[mask, 1],
-                    c=[test_colors[i]],
+                    comparison_recon_low_dim[mask, 0], comparison_recon_low_dim[mask, 1],
+                    c=[comparison_colors[i]],
                     label=class_names[label] if class_names is not None else f"Class {label}",
                     alpha=0.7, s=50, edgecolors='none'
                 )
-            axes[3].set_title(f"Test Reconstructed Images ({len(test_data)} images)", fontsize=12)
+            axes[3].set_title(f"Comparison Reconstructed Images ({len(comparison_data)} images)", fontsize=12)
             axes[3].legend(fontsize=8)
             axes[3].grid(alpha=0.3)
             axes[3].set_xlabel('t-SNE Component 1')
@@ -691,28 +706,28 @@ def visualize_side_by_side_latent_spaces(
             axes[0].set_xlabel('t-SNE Component 1')
             axes[0].set_ylabel('t-SNE Component 2')
             
-            # Plot test data
-            unique_test_labels = np.unique(test_plot_labels)
-            test_colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_test_labels)))
+            # Plot comparison data
+            unique_comparison_labels = np.unique(comparison_plot_labels)
+            comparison_colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_comparison_labels)))
             
-            for i, label in enumerate(unique_test_labels):
-                mask = test_plot_labels == label
+            for i, label in enumerate(unique_comparison_labels):
+                mask = comparison_plot_labels == label
                 axes[1].scatter(
-                    test_low_dim_embs[mask, 0], 
-                    test_low_dim_embs[mask, 1],
-                    c=[test_colors[i]],
+                    comparison_low_dim_embs[mask, 0], 
+                    comparison_low_dim_embs[mask, 1],
+                    c=[comparison_colors[i]],
                     label=class_names[label] if class_names is not None else f"Class {label}",
                     alpha=0.7,
                     s=50,
                     edgecolors='none'
                 )
             
-            test_title = f"Test Data Latent Space ({len(test_data)} images)"
-            if test_silhouette is not None:
-                test_title += f"\nSilhouette Score: {test_silhouette:.3f}"
+            comparison_title = f"Comparison Data Latent Space ({len(comparison_data)} images)"
+            if comparison_silhouette is not None:
+                comparison_title += f"\nSilhouette Score: {comparison_silhouette:.3f}"
             if orig_silhouette is not None:
-                test_title += f" (Original: {orig_silhouette:.3f})"
-            axes[1].set_title(test_title, fontsize=14)
+                comparison_title += f" (Original: {orig_silhouette:.3f})"
+            axes[1].set_title(comparison_title, fontsize=14)
             axes[1].legend()
             axes[1].grid(alpha=0.3)
             axes[1].set_xlabel('t-SNE Component 1')
@@ -725,7 +740,7 @@ def visualize_side_by_side_latent_spaces(
         plt.tight_layout()
         plt.show()
         
-        return train_silhouette, test_silhouette 
+        return train_silhouette, comparison_silhouette 
 
 
 def plot_tsne_visualization(

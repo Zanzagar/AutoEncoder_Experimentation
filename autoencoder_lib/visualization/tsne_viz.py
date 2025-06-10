@@ -527,17 +527,24 @@ def visualize_side_by_side_latent_spaces(
         
         if verbose:
             print(f"Running t-SNE on {train_plot_only} train samples and {comparison_plot_only} comparison samples...")
+            print(f"Train latent space: shape={encoded_train.shape}, std={encoded_train.std():.4f}, mean={encoded_train.mean():.4f}")
+            print(f"Comparison latent space: shape={encoded_comparison.shape}, std={encoded_comparison.std():.4f}, mean={encoded_comparison.mean():.4f}")
+            print(f"Train perplexity: {train_perplexity}, Comparison perplexity: {comparison_perplexity}")
+            print(f"Train classes: {np.unique(train_plot_labels, return_counts=True)}")
+            print(f"Comparison classes: {np.unique(comparison_plot_labels, return_counts=True)}")
         
         # Apply t-SNE with consistent parameters
-        # Train data t-SNE
-        train_tsne = TSNE(perplexity=min(30, len(encoded_train[:train_plot_only])-1), 
+        # Train data t-SNE - improved perplexity calculation
+        train_perplexity = min(30, max(5, len(encoded_train[:train_plot_only])//4))
+        train_tsne = TSNE(perplexity=train_perplexity, 
                          n_components=2, init='pca', max_iter=5000, random_state=42)
         train_low_dim_embs = train_tsne.fit_transform(encoded_train[:train_plot_only])
         train_plot_labels = train_labels[:train_plot_only]
         
-        # Comparison data t-SNE
-        comparison_tsne = TSNE(perplexity=min(30, len(encoded_comparison[:comparison_plot_only])-1), 
-                               n_components=2, init='pca', max_iter=5000, random_state=42)
+        # Comparison data t-SNE - use different random seed and improved perplexity
+        comparison_perplexity = min(30, max(5, len(encoded_comparison[:comparison_plot_only])//4))
+        comparison_tsne = TSNE(perplexity=comparison_perplexity, 
+                        n_components=2, init='pca', max_iter=5000, random_state=123)  # Different seed
         comparison_low_dim_embs = comparison_tsne.fit_transform(encoded_comparison[:comparison_plot_only])
         comparison_plot_labels = comparison_labels[:comparison_plot_only]
         
@@ -567,6 +574,13 @@ def visualize_side_by_side_latent_spaces(
                 if verbose:
                     print(f"Could not calculate comparison silhouette score: {e}")
         
+        # Determine context from title_suffix for proper labeling
+        comparison_type = "Comparison"  # Default fallback
+        if "validation" in title_suffix.lower():
+            comparison_type = "Validation"
+        elif "test" in title_suffix.lower():
+            comparison_type = "Test"
+        
         # Determine layout based on grid_layout parameter
         if grid_layout == "2x2":
             # Generate reconstructed images for both train and comparison data
@@ -591,12 +605,14 @@ def visualize_side_by_side_latent_spaces(
             # Compute t-SNE for reconstructed images
             if verbose:
                 print("Computing t-SNE for reconstructed images...")
-            train_recon_tsne = TSNE(perplexity=min(30, len(train_reconstructed[:train_plot_only])-1), 
-                                   n_components=2, init='pca', max_iter=5000, random_state=42)
+            train_recon_perplexity = min(30, max(5, len(train_reconstructed[:train_plot_only])//4))
+            train_recon_tsne = TSNE(perplexity=train_recon_perplexity, 
+                                   n_components=2, init='pca', max_iter=5000, random_state=456)  # Different seed
             train_recon_low_dim = train_recon_tsne.fit_transform(train_reconstructed[:train_plot_only])
             
-            comparison_recon_tsne = TSNE(perplexity=min(30, len(comparison_reconstructed[:comparison_plot_only])-1), 
-                                         n_components=2, init='pca', max_iter=5000, random_state=42)
+            comparison_recon_perplexity = min(30, max(5, len(comparison_reconstructed[:comparison_plot_only])//4))
+            comparison_recon_tsne = TSNE(perplexity=comparison_recon_perplexity, 
+                                         n_components=2, init='pca', max_iter=5000, random_state=789)  # Different seed
             comparison_recon_low_dim = comparison_recon_tsne.fit_transform(comparison_reconstructed[:comparison_plot_only])
             
             # Create 2x2 grid
@@ -627,7 +643,7 @@ def visualize_side_by_side_latent_spaces(
             axes[0].set_xlabel('t-SNE Component 1')
             axes[0].set_ylabel('t-SNE Component 2')
             
-            # Plot 2: Comparison Latent Space
+            # Plot 2: Comparison Latent Space (with proper context)
             for i, label in enumerate(unique_comparison_labels):
                 mask = comparison_plot_labels == label
                 axes[1].scatter(
@@ -636,12 +652,12 @@ def visualize_side_by_side_latent_spaces(
                     label=class_names[label] if class_names is not None else f"Class {label}",
                     alpha=0.7, s=50, edgecolors='none'
                 )
-            comparison_title = f"Comparison Data Latent Space ({len(comparison_data)} images)"
+            comparison_title = f"{comparison_type} Latent Space ({len(comparison_data)} images)"
             if comparison_silhouette is not None:
                 comparison_title += f"\nSilhouette Score: {comparison_silhouette:.3f}"
             if orig_silhouette is not None:
                 comparison_title += f" (Original: {orig_silhouette:.3f})"
-            axes[1].set_title(comparison_title, fontsize=12)
+            axes[1].set_title(comparison_title, fontsize=14)
             axes[1].legend(fontsize=8)
             axes[1].grid(alpha=0.3)
             axes[1].set_xlabel('t-SNE Component 1')
@@ -662,7 +678,7 @@ def visualize_side_by_side_latent_spaces(
             axes[2].set_xlabel('t-SNE Component 1')
             axes[2].set_ylabel('t-SNE Component 2')
             
-            # Plot 4: Comparison Reconstructed Images
+            # Plot 4: Comparison Reconstructed Images (with proper context)
             for i, label in enumerate(unique_comparison_labels):
                 mask = comparison_plot_labels == label
                 axes[3].scatter(
@@ -671,7 +687,7 @@ def visualize_side_by_side_latent_spaces(
                     label=class_names[label] if class_names is not None else f"Class {label}",
                     alpha=0.7, s=50, edgecolors='none'
                 )
-            axes[3].set_title(f"Comparison Reconstructed Images ({len(comparison_data)} images)", fontsize=12)
+            axes[3].set_title(f"{comparison_type} Reconstructed Images ({len(comparison_data)} images)", fontsize=12)
             axes[3].legend(fontsize=8)
             axes[3].grid(alpha=0.3)
             axes[3].set_xlabel('t-SNE Component 1')
@@ -722,7 +738,7 @@ def visualize_side_by_side_latent_spaces(
                     edgecolors='none'
                 )
             
-            comparison_title = f"Comparison Data Latent Space ({len(comparison_data)} images)"
+            comparison_title = f"{comparison_type} Latent Space ({len(comparison_data)} images)"
             if comparison_silhouette is not None:
                 comparison_title += f"\nSilhouette Score: {comparison_silhouette:.3f}"
             if orig_silhouette is not None:

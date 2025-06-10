@@ -254,20 +254,21 @@ class ExperimentRunner:
         
         return key_epochs
     
-    def train_autoencoder(self, model, train_loader, test_data, test_labels, 
+    def train_autoencoder(self, model, train_loader, validation_data, validation_labels, 
                           epochs=10, learning_rate=0.001, loss_func=None,
                           class_names=None, visualization_interval=500,
                           num_visualizations=5, save_model=True,
                           experiment_name=None, calculate_train_silhouette=True,
-                          calculate_test_silhouette=True):
+                          calculate_validation_silhouette=True, test_data=None, test_labels=None,
+                          enable_early_stopping=True, patience=10, min_delta=0.001):
         """
-        Train an autoencoder model with comprehensive tracking and visualization.
+        Train an autoencoder model with comprehensive tracking and validation-based monitoring.
         
         Args:
             model: The autoencoder model to train
             train_loader: DataLoader for training data
-            test_data: Tensor of test data
-            test_labels: Tensor of test labels
+            validation_data: Tensor of validation data (used for monitoring during training)
+            validation_labels: Tensor of validation labels
             epochs: Number of training epochs
             learning_rate: Learning rate for optimizer
             loss_func: Loss function (default: MSELoss)
@@ -277,7 +278,12 @@ class ExperimentRunner:
             save_model: Whether to save the model after training
             experiment_name: Name for this experiment
             calculate_train_silhouette: Whether to calculate train silhouette scores
-            calculate_test_silhouette: Whether to calculate test silhouette scores
+            calculate_validation_silhouette: Whether to calculate validation silhouette scores
+            test_data: Optional test data (ONLY used for final evaluation if provided)
+            test_labels: Optional test labels (ONLY used for final evaluation if provided)
+            enable_early_stopping: Whether to enable early stopping based on validation loss
+            patience: Number of epochs to wait for improvement before early stopping
+            min_delta: Minimum change in validation loss to qualify as improvement
             
         Returns:
             Tuple of (model, history) containing the trained model and training history
@@ -305,9 +311,9 @@ class ExperimentRunner:
             optimizer, mode='min', factor=0.5, patience=3
         )
         
-        # Select visualization samples
+        # Select visualization samples from validation data
         view_data, view_labels, view_indices = self.select_visualization_samples(
-            test_data, test_labels, class_names
+            validation_data, validation_labels, class_names
         )
         
         # Collect training data sample
@@ -316,22 +322,31 @@ class ExperimentRunner:
             train_data_tensor, train_labels_tensor, class_names
         )
         
-        # Initialize training history
+        # Initialize training history with validation monitoring
         history = {
             'train_loss': [],
-            'test_loss': [],
+            'validation_loss': [],
             'epochs': epochs,
             'learning_rate': learning_rate,
             'model_name': model.__class__.__name__,
             'experiment_name': experiment_name,
             'train_silhouette_scores': [],
-            'test_silhouette_scores': [],
-            'view_indices': view_indices
+            'validation_silhouette_scores': [],
+            'view_indices': view_indices,
+            'early_stopping_enabled': enable_early_stopping,
+            'patience': patience,
+            'min_delta': min_delta
         }
         
         # Calculate visualization epochs
         key_epochs = self.calculate_visualization_epochs(epochs, num_visualizations)
         print(f"Visualizing at epochs: {key_epochs}")
+        
+        # Early stopping variables
+        best_validation_loss = float('inf')
+        patience_counter = 0
+        best_model_state = None
+        early_stopped = False
         
         # Training loop
         start_time = time.time()
@@ -372,42 +387,74 @@ class ExperimentRunner:
                 
                 if should_visualize:
                     model.eval()
-                    test_loss = self.memory_efficient_evaluation(model, test_data, loss_func)
-                    print(f'Epoch: {epoch+1}/{epochs}, Step: {step} | batch loss: {loss.item():.4f} | test loss: {test_loss:.4f}')
+                    validation_loss = self.memory_efficient_evaluation(model, validation_data, loss_func)
+                    print(f'Epoch: {epoch+1}/{epochs}, Step: {step} | batch loss: {loss.item():.4f} | validation loss: {validation_loss:.4f}')
                     
                     # Record metrics
                     history['train_loss'].append(loss.item())
-                    history['test_loss'].append(test_loss)
+                    history['validation_loss'].append(validation_loss)
                     
-                    # Perform training visualizations
+                    # Perform training visualizations (use validation data for monitoring)
                     self._perform_training_visualizations(
                         model, train_view_data, train_view_labels, view_data, view_labels,
-                        train_data_tensor, train_labels_tensor, test_data, test_labels,
+                        train_data_tensor, train_labels_tensor, validation_data, validation_labels,
                         class_names, epoch+1, step, history, calculate_train_silhouette, 
-                        calculate_test_silhouette
+                        calculate_validation_silhouette
                     )
                     
                     model.train()
             
             # End of epoch evaluation
             model.eval()
-            test_loss = self.memory_efficient_evaluation(model, test_data, loss_func)
+            validation_loss = self.memory_efficient_evaluation(model, validation_data, loss_func)
             avg_train_loss = epoch_loss / batches
             
             # Update history
             history['train_loss'].append(avg_train_loss)
-            history['test_loss'].append(test_loss)
+            history['validation_loss'].append(validation_loss)
             
-            # Update learning rate scheduler
-            scheduler.step(test_loss)
+            # Update learning rate scheduler based on validation loss
+            scheduler.step(validation_loss)
             
-            print(f'Epoch {epoch+1}/{epochs} completed | '
-                  f'Avg train loss: {avg_train_loss:.4f} | '
-                  f'Test loss: {test_loss:.4f}')
+            # Early stopping check
+            if enable_early_stopping:
+                if validation_loss < best_validation_loss - min_delta:
+                    best_validation_loss = validation_loss
+                    patience_counter = 0
+                    # Save best model state
+                    best_model_state = model.state_dict().copy()
+                    print(f'Epoch {epoch+1}/{epochs} completed | '
+                          f'Avg train loss: {avg_train_loss:.4f} | '
+                          f'Validation loss: {validation_loss:.4f} ⭐ (new best)')
+                else:
+                    patience_counter += 1
+                    print(f'Epoch {epoch+1}/{epochs} completed | '
+                          f'Avg train loss: {avg_train_loss:.4f} | '
+                          f'Validation loss: {validation_loss:.4f} (patience: {patience_counter}/{patience})')
+                    
+                    if patience_counter >= patience:
+                        print(f"\n🔄 Early stopping triggered after {epoch+1} epochs")
+                        print(f"Best validation loss: {best_validation_loss:.6f} at epoch {epoch+1-patience_counter}")
+                        # Restore best model
+                        if best_model_state is not None:
+                            model.load_state_dict(best_model_state)
+                            print("Restored model to best validation loss state")
+                        early_stopped = True
+                        break
+            else:
+                print(f'Epoch {epoch+1}/{epochs} completed | '
+                      f'Avg train loss: {avg_train_loss:.4f} | '
+                      f'Validation loss: {validation_loss:.4f}')
         
         # Final evaluation and metrics
         train_time = time.time() - start_time
-        print(f"Training completed in {train_time:.2f} seconds")
+        if early_stopped:
+            print(f"Training completed with early stopping in {train_time:.2f} seconds")
+            history['early_stopped'] = True
+            history['best_validation_loss'] = best_validation_loss
+        else:
+            print(f"Training completed all {epochs} epochs in {train_time:.2f} seconds")
+            history['early_stopped'] = False
         
         # Calculate final losses
         model.eval()
@@ -419,13 +466,21 @@ class ExperimentRunner:
             else:
                 final_train_loss = None
             
-            final_test_loss = self.memory_efficient_evaluation(model, test_data, loss_func)
+            final_validation_loss = self.memory_efficient_evaluation(model, validation_data, loss_func)
+            
+            # Only evaluate on test data if provided (final evaluation only)
+            final_test_loss = None
+            if test_data is not None and test_labels is not None:
+                final_test_loss = self.memory_efficient_evaluation(model, test_data, loss_func)
+                print("📊 Performing final test set evaluation (unbiased)")
+            else:
+                print("📊 No test data provided - using validation performance as final metric")
         
-        # Final visualization and silhouette calculation
-        final_train_silhouette, final_test_silhouette = self._perform_final_evaluation(
-            model, train_data_tensor, train_labels_tensor, test_data, test_labels,
-            class_names, calculate_train_silhouette, calculate_test_silhouette,
-            train_view_data, train_view_labels, view_data, view_labels
+        # Final visualization and silhouette calculation (using validation data for visualization)
+        final_train_silhouette, final_validation_silhouette = self._perform_final_evaluation(
+            model, train_data_tensor, train_labels_tensor, validation_data, validation_labels,
+            class_names, calculate_train_silhouette, calculate_validation_silhouette,
+            train_view_data, train_view_labels, view_data, view_labels, test_data, test_labels
         )
         
         # CONSOLIDATED FINAL RESULTS SUMMARY
@@ -440,16 +495,34 @@ class ExperimentRunner:
         print(f"\n📈 Final Loss Metrics:")
         if final_train_loss is not None:
             print(f"   • Final Train Loss: {final_train_loss:.6f}")
-        print(f"   • Final Test Loss: {final_test_loss:.6f}")
+        print(f"   • Final Validation Loss: {final_validation_loss:.6f}")
+        if final_test_loss is not None:
+            print(f"   • Final Test Loss: {final_test_loss:.6f} (unbiased evaluation)")
         print(f"\n🎯 Final Silhouette Scores (Latent Space Quality):")
         if final_train_silhouette is not None:
             print(f"   • Training Data: {final_train_silhouette:.4f}")
         else:
             print(f"   • Training Data: N/A (insufficient classes)")
-        if final_test_silhouette is not None:
-            print(f"   • Test Data: {final_test_silhouette:.4f}")
+        if final_validation_silhouette is not None:
+            print(f"   • Validation Data: {final_validation_silhouette:.4f}")
         else:
-            print(f"   • Test Data: N/A (insufficient classes)")
+            print(f"   • Validation Data: N/A (insufficient classes)")
+        if test_data is not None and test_labels is not None:
+            # Calculate test silhouette if test data was provided
+            from ..visualization import visualize_side_by_side_latent_spaces
+            try:
+                _, final_test_silhouette = visualize_side_by_side_latent_spaces(
+                    model=model, train_data=train_data_tensor, train_labels=train_labels_tensor,
+                    test_data=test_data, test_labels=test_labels, class_names=class_names,
+                    title_suffix="Final Test Evaluation", device=str(self.device),
+                    figure_size=(20, 16), grid_layout="2x2", verbose=False
+                )
+                if final_test_silhouette is not None:
+                    print(f"   • Test Data: {final_test_silhouette:.4f} (unbiased evaluation)")
+                else:
+                    print(f"   • Test Data: N/A (insufficient classes)")
+            except Exception as e:
+                print(f"   • Test Data: Error calculating ({e})")
         print("="*70)
         print("✅ Experiment Complete!")
         print("="*70 + "\n")
@@ -475,8 +548,8 @@ class ExperimentRunner:
     
     def _perform_training_visualizations(self, model, train_view_data, train_view_labels,
                                        view_data, view_labels, train_data_tensor, train_labels_tensor,
-                                       test_data, test_labels, class_names, epoch, step, history,
-                                       calculate_train_silhouette, calculate_test_silhouette):
+                                       validation_data, validation_labels, class_names, epoch, step, history,
+                                       calculate_train_silhouette, calculate_validation_silhouette):
         """Perform visualizations during training."""
         with torch.no_grad():
             # Get reconstructions for both train and test data
@@ -497,31 +570,31 @@ class ExperimentRunner:
             
             # Visualize latent space and calculate silhouette scores using proper visualization module
             try:
-                train_silhouette, test_silhouette = self.visualize_latent_space_side_by_side(
-                    model, train_data_tensor, train_labels_tensor, test_data, test_labels,
+                train_silhouette, validation_silhouette = self.visualize_latent_space_side_by_side(
+                    model, train_data_tensor, train_labels_tensor, validation_data, validation_labels,
                     class_names, f'Training Progress - Epoch {epoch}, Step {step}'
                 )
                 if calculate_train_silhouette and train_silhouette is not None:
                     history['train_silhouette_scores'].append(train_silhouette)
-                if calculate_test_silhouette and test_silhouette is not None:
-                    history['test_silhouette_scores'].append(test_silhouette)
+                if calculate_validation_silhouette and validation_silhouette is not None:
+                    history['validation_silhouette_scores'].append(validation_silhouette)
             except Exception as e:
                 print(f"Warning: Could not visualize latent spaces: {e}")
     
     def _perform_final_evaluation(self, model, train_data_tensor, train_labels_tensor,
-                                test_data, test_labels, class_names, calculate_train_silhouette,
-                                calculate_test_silhouette, train_view_data, train_view_labels, 
-                                view_data, view_labels):
-        """Perform final evaluation and visualization."""
+                                validation_data, validation_labels, class_names, calculate_train_silhouette,
+                                calculate_validation_silhouette, train_view_data, train_view_labels, 
+                                view_data, view_labels, test_data=None, test_labels=None):
+        """Perform final evaluation and visualization using validation data."""
         print("Generating final latent space visualization and metrics")
         
-        # Always perform comprehensive final visualization
-        final_train_silhouette, final_test_silhouette = self.comprehensive_final_visualization(
+        # Always perform comprehensive final visualization using validation data
+        final_train_silhouette, final_validation_silhouette = self.comprehensive_final_visualization(
             model, train_view_data, train_view_labels, view_data, view_labels,
-            train_data_tensor, train_labels_tensor, test_data, test_labels, class_names
+            train_data_tensor, train_labels_tensor, validation_data, validation_labels, class_names
         )
         
-        return final_train_silhouette, final_test_silhouette
+        return final_train_silhouette, final_validation_silhouette
     
     def _show_reconstructions(self, original_data, reconstructed_data, labels, class_names, title):
         """Show reconstruction visualizations."""
@@ -575,19 +648,21 @@ class ExperimentRunner:
         }, save_path)
         print(f"Model saved to {save_path}")
     
-    def run_experiment(self, model_class, model_kwargs, train_loader, test_data, test_labels,
-                       training_kwargs=None, experiment_name=None):
+    def run_experiment(self, model_class, model_kwargs, train_loader, validation_data, validation_labels,
+                       training_kwargs=None, experiment_name=None, test_data=None, test_labels=None):
         """
-        Run a complete autoencoder experiment.
+        Run a complete autoencoder experiment with proper train/validation/test split.
         
         Args:
             model_class: Class of the model to create
             model_kwargs: Keyword arguments for model initialization
             train_loader: DataLoader for training data
-            test_data: Test data tensor
-            test_labels: Test labels tensor
+            validation_data: Validation data tensor (used for monitoring during training)
+            validation_labels: Validation labels tensor
             training_kwargs: Keyword arguments for training
             experiment_name: Name for this experiment
+            test_data: Optional test data tensor (only used for final unbiased evaluation)
+            test_labels: Optional test labels tensor
             
         Returns:
             Tuple of (model, history)
@@ -600,10 +675,12 @@ class ExperimentRunner:
         if training_kwargs is None:
             training_kwargs = {}
         
-        # Train the model
+        # Train the model with validation monitoring
         return self.train_autoencoder(
             model=model,
             train_loader=train_loader,
+            validation_data=validation_data,
+            validation_labels=validation_labels,
             test_data=test_data,
             test_labels=test_labels,
             experiment_name=experiment_name,
@@ -650,7 +727,7 @@ class ExperimentRunner:
     
     def comprehensive_final_visualization(self, model, train_view_data, train_view_labels, 
                                         view_data, view_labels, train_data_tensor, train_labels_tensor,
-                                        test_data, test_labels, class_names):
+                                        validation_data, validation_labels, class_names):
         """
         Perform comprehensive final visualization showing both reconstructions and latent spaces.
         
@@ -658,16 +735,16 @@ class ExperimentRunner:
             model: Trained model
             train_view_data: Selected training data for visualization
             train_view_labels: Labels for training visualization data
-            view_data: Selected test data for visualization
-            view_labels: Labels for test visualization data
+            view_data: Selected validation data for visualization
+            view_labels: Labels for validation visualization data
             train_data_tensor: Full training data tensor
             train_labels_tensor: Full training labels tensor
-            test_data: Full test data tensor
-            test_labels: Full test labels tensor
+            validation_data: Full validation data tensor
+            validation_labels: Full validation labels tensor
             class_names: List of class names
             
         Returns:
-            Tuple of (final_train_silhouette, final_test_silhouette)
+            Tuple of (final_train_silhouette, final_validation_silhouette)
         """
         print("\n" + "="*60)
         print("📊 FINAL VISUALIZATION GENERATION")
@@ -677,7 +754,7 @@ class ExperimentRunner:
             # 1. Show final reconstructions
             print("Generating final reconstruction visualizations...")
             _, train_decoded = model(train_view_data)
-            _, test_decoded = model(view_data)
+            _, validation_decoded = model(view_data)
             
             self._show_reconstructions(
                 train_view_data, train_decoded, train_view_labels, class_names,
@@ -685,25 +762,25 @@ class ExperimentRunner:
             )
             
             self._show_reconstructions(
-                view_data, test_decoded, view_labels, class_names,
-                'Final Results - Test: Original vs. Reconstructed'
+                view_data, validation_decoded, view_labels, class_names,
+                'Final Results - Validation: Original vs. Reconstructed'
             )
             
             # 2. Show final latent space visualization using proper visualization module
             print("Generating final latent space analysis...")
             try:
-                final_train_silhouette, final_test_silhouette = self.visualize_latent_space_side_by_side(
-                    model, train_data_tensor, train_labels_tensor, test_data, test_labels,
+                final_train_silhouette, final_validation_silhouette = self.visualize_latent_space_side_by_side(
+                    model, train_data_tensor, train_labels_tensor, validation_data, validation_labels,
                     class_names, 'Final Results'
                 )
                 
             except Exception as e:
                 print(f"Warning: Could not create final latent space visualization: {e}")
                 final_train_silhouette = None
-                final_test_silhouette = None
+                final_validation_silhouette = None
         
         print("="*60)
         print("✅ FINAL VISUALIZATION COMPLETE")
         print("="*60)
         
-        return final_train_silhouette, final_test_silhouette 
+        return final_train_silhouette, final_validation_silhouette 

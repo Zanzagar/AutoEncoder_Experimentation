@@ -263,8 +263,7 @@ def run_single_experiment(
                         'latent_dim': latent_dim
                     }
                 }, model_path)
-                if verbose:
-                    print(f"Model saved to: {model_path}")
+                # Model save message already printed by runner
             
             # Compile results (exclude model object for JSON serialization)
             results = {
@@ -296,8 +295,6 @@ def run_single_experiment(
             _save_results_to_json(results, results_file)
             
             if verbose:
-                final_loss = metrics.get('final_test_loss', 'N/A')
-                print(f"Experiment completed successfully! Final test loss: {final_loss}")
                 print(f"Results saved to: {exp_dir}")
             
             return results

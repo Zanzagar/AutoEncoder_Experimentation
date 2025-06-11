@@ -448,6 +448,9 @@ class ExperimentRunner:
             print(f"Training completed all {epochs} epochs in {train_time:.2f} seconds")
             history['early_stopped'] = False
         
+        # Plot training curve after training completion
+        self.plot_training_curve(history, model_name=model.__class__.__name__)
+        
         # Final comprehensive evaluation - includes test data if available
         results = self._perform_final_evaluation(
             model, train_view_data, train_view_labels, validation_view_data, validation_view_labels,
@@ -905,4 +908,58 @@ class ExperimentRunner:
             device=str(self.device),
             figure_size=(20, 12),
             verbose=False
-        ) 
+        )
+    
+    def plot_training_curve(self, history, model_name=None):
+        """
+        Plot training curve showing loss vs training steps with train, validation, and test losses.
+        
+        Args:
+            history: Training history dictionary containing loss data
+            model_name: Name of the model to include in the title
+        """
+        plt.figure(figsize=(12, 6))
+        
+        # Extract loss data
+        train_losses = history.get('train_loss', [])
+        validation_losses = history.get('validation_loss', [])
+        test_losses = history.get('test_loss', [])
+        
+        # Create training steps for x-axis (assuming losses are recorded at regular intervals)
+        max_length = max(len(train_losses), len(validation_losses), len(test_losses))
+        if max_length == 0:
+            print("No loss data available for plotting")
+            return
+            
+        # Plot training loss
+        if train_losses:
+            steps = range(len(train_losses))
+            plt.plot(steps, train_losses, 'b-', linewidth=2, label='Training Loss')
+        
+        # Plot validation loss
+        if validation_losses:
+            steps = range(len(validation_losses))
+            plt.plot(steps, validation_losses, 'g--', linewidth=2, label='Validation Loss')
+        
+        # Plot test loss
+        if test_losses:
+            steps = range(len(test_losses))
+            plt.plot(steps, test_losses, 'r:', linewidth=2, label='Test Loss')
+        
+        # Style the plot inspired by the original notebook
+        plt.xlabel('Training Steps', fontsize=12)
+        plt.ylabel('Loss', fontsize=12)
+        
+        # Create title with model name
+        title = 'Training Curve: Loss vs Training Steps'
+        if model_name:
+            title = f'{model_name} - {title}'
+        plt.title(title, fontsize=14)
+        
+        # Add legend, grid, and styling
+        plt.legend(fontsize=11)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        
+        # Show the plot
+        plt.show() 

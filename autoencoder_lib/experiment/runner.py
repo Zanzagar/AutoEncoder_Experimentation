@@ -457,11 +457,8 @@ class ExperimentRunner:
         final_train_silhouette, final_validation_silhouette, final_test_silhouette = results[:3]
         final_train_loss, final_validation_loss, final_test_loss = results[3:]
         
-        # CONSOLIDATED FINAL RESULTS SUMMARY
-        print("\n" + "="*70)
-        print("🎯 FINAL EXPERIMENT RESULTS")
-        print("="*70)
-        print(f"📊 Training Summary:")
+        # Display final results summary
+        print(f"\n📊 Training Summary:")
         print(f"   • Model: {model.__class__.__name__}")
         print(f"   • Training Time: {train_time:.2f} seconds")
         print(f"   • Total Epochs: {epochs}")
@@ -488,8 +485,8 @@ class ExperimentRunner:
             print(f"   • Test Data: N/A (insufficient classes)")
         print("="*70)
         print("✅ Experiment Complete!")
-        print("="*70 + "\n")
-        
+        print("="*70)
+
         # Complete history
         history.update({
             'final_train_loss': final_train_loss,
@@ -605,9 +602,9 @@ class ExperimentRunner:
             if test_data is not None and test_labels is not None:
                 final_test_loss = self.memory_efficient_evaluation(model, test_data, loss_func)
         
-        print("\n" + "="*60)
-        print("📊 FINAL VISUALIZATION GENERATION")
-        print("="*60)
+        print("\n" + "="*70)
+        print("🎯 FINAL EXPERIMENT RESULTS")
+        print("="*70)
         
         final_train_silhouette = None
         final_validation_silhouette = None
@@ -615,7 +612,6 @@ class ExperimentRunner:
         
         with torch.no_grad():
             # 1. Show final reconstructions - Training, Validation, then Test if available
-            print("Generating final reconstruction visualizations...")
             _, train_decoded = model(train_view_data)
             _, validation_decoded = model(validation_view_data)
             
@@ -671,10 +667,6 @@ class ExperimentRunner:
                     )
                 except Exception as e:
                     print(f"Warning: Could not create final latent space visualization: {e}")
-        
-        print("="*60)
-        print("✅ FINAL VISUALIZATION COMPLETE")
-        print("="*60)
         
         return final_train_silhouette, final_validation_silhouette, final_test_silhouette, final_train_loss, final_validation_loss, final_test_loss
     
@@ -874,8 +866,6 @@ class ExperimentRunner:
         print("="*60)
         
         return final_train_silhouette, final_validation_silhouette
-    
-
     
     def visualize_comprehensive_three_way(self, model, train_data_tensor, train_labels_tensor,
                                          validation_data, validation_labels, test_data, test_labels,

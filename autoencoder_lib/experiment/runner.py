@@ -639,7 +639,7 @@ class ExperimentRunner:
             
             # Show test reconstructions if test data is available
             if test_data is not None and test_labels is not None:
-                test_view_data, test_view_labels = self.select_visualization_samples(
+                test_view_data, test_view_labels, test_view_indices = self.select_visualization_samples(
                     test_data, test_labels, class_names, samples_per_class=2
                 )
                 test_view_data = test_view_data.to(self.device)

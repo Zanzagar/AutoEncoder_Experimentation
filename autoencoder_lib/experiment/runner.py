@@ -910,23 +910,57 @@ class ExperimentRunner:
             verbose=False
         )
     
+    def _calculate_epoch_labels(self, history, num_steps):
+        """
+        Calculate epoch labels for training curve x-axis based on recording pattern.
+        
+        Args:
+            history: Training history dictionary
+            num_steps: Total number of recorded training steps
+            
+        Returns:
+            List of epoch labels for each training step
+        """
+        # Get total epochs from history if available
+        total_epochs = 3  # Default fallback
+        if 'epochs' in history:
+            total_epochs = history['epochs']
+        elif hasattr(history, 'get') and history.get('final_train_loss') is not None:
+            # Try to infer from data points - rough estimation
+            total_epochs = max(3, (num_steps + 1) // 2)  # Rough heuristic
+        
+        epoch_labels = []
+        epochs_per_step = total_epochs / num_steps
+        
+        for i in range(num_steps):
+            # Calculate approximate epoch for this step
+            current_epoch = (i + 1) * epochs_per_step
+            
+            # For mixed recording pattern, some are mid-epoch, some end-of-epoch
+            if i % 2 == 0:  # Even indices tend to be end-of-epoch
+                epoch_labels.append(f"{int(current_epoch)}")
+            else:  # Odd indices tend to be mid-epoch
+                epoch_labels.append(f"{current_epoch:.1f}")
+                
+        return epoch_labels
+
     def plot_training_curve(self, history, model_name=None):
         """
-        Plot training curve showing loss vs training steps with train, validation, and test losses.
+        Plot training curve showing loss vs training steps with train and validation losses.
+        Includes secondary x-axis showing epoch information for better interpretability.
         
         Args:
             history: Training history dictionary containing loss data
             model_name: Name of the model to include in the title
         """
-        plt.figure(figsize=(12, 6))
+        fig, ax1 = plt.subplots(figsize=(12, 6))
         
         # Extract loss data
         train_losses = history.get('train_loss', [])
         validation_losses = history.get('validation_loss', [])
-        test_losses = history.get('test_loss', [])
         
-        # Create training steps for x-axis (assuming losses are recorded at regular intervals)
-        max_length = max(len(train_losses), len(validation_losses), len(test_losses))
+        # Determine the primary data length (use longer of train/validation)
+        max_length = max(len(train_losses), len(validation_losses))
         if max_length == 0:
             print("No loss data available for plotting")
             return
@@ -934,32 +968,42 @@ class ExperimentRunner:
         # Plot training loss
         if train_losses:
             steps = range(len(train_losses))
-            plt.plot(steps, train_losses, 'b-', linewidth=2, label='Training Loss')
+            ax1.plot(steps, train_losses, 'b-', linewidth=2, label='Training Loss')
         
-        # Plot validation loss
+        # Plot validation loss  
         if validation_losses:
             steps = range(len(validation_losses))
-            plt.plot(steps, validation_losses, 'g--', linewidth=2, label='Validation Loss')
+            ax1.plot(steps, validation_losses, 'g--', linewidth=2, label='Validation Loss')
         
-        # Plot test loss
-        if test_losses:
-            steps = range(len(test_losses))
-            plt.plot(steps, test_losses, 'r:', linewidth=2, label='Test Loss')
-        
-        # Style the plot inspired by the original notebook
-        plt.xlabel('Training Steps', fontsize=12)
-        plt.ylabel('Loss', fontsize=12)
+        # Style the primary axis
+        ax1.set_xlabel('Training Steps', fontsize=12)
+        ax1.set_ylabel('Loss', fontsize=12)
         
         # Create title with model name
         title = 'Training Curve: Loss vs Training Steps'
         if model_name:
             title = f'{model_name} - {title}'
-        plt.title(title, fontsize=14)
+        ax1.set_title(title, fontsize=14)
         
-        # Add legend, grid, and styling
-        plt.legend(fontsize=11)
-        plt.grid(True, alpha=0.3)
+        # Add legend and grid
+        ax1.legend(fontsize=11)
+        ax1.grid(True, alpha=0.3)
+        
+        # Create secondary x-axis showing epochs
+        ax2 = ax1.twiny()
+        ax2.set_xlim(ax1.get_xlim())
+        
+        # Calculate epoch labels for the training steps
+        epoch_labels = self._calculate_epoch_labels(history, max_length)
+        epoch_positions = list(range(max_length))
+        
+        # Set epoch ticks and labels on secondary axis
+        ax2.set_xticks(epoch_positions)
+        ax2.set_xticklabels(epoch_labels)
+        ax2.set_xlabel('Epochs', fontsize=12)
+        
+        # Style secondary axis
+        ax2.tick_params(axis='x', labelsize=10)
+        
         plt.tight_layout()
-        
-        # Show the plot
         plt.show() 

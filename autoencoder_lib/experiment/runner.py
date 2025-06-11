@@ -115,18 +115,14 @@ class ExperimentRunner:
             view_data = test_data[view_indices].to(self.device)
             view_labels = test_labels[view_indices]
             
-            print(f"Selected visualization samples: {len(view_indices)} total ({samples_per_class} per class)")
-            for label in sorted(class_samples.keys()):
-                label_name = class_names[label] if class_names and label < len(class_names) else f"Class {label}"
-                selected_for_label = [i for i in view_indices if test_labels[i].item() == label]
-                print(f"  {label_name}: indices {selected_for_label} (grouped by class)")
+            # Debug info removed for cleaner output
         else:
             # Use first n samples if no class information (deterministic)
             n_test_img = min(10, len(test_data))
             view_indices = list(range(n_test_img))
             view_data = test_data[:n_test_img].to(self.device)
             view_labels = test_labels[:n_test_img]
-            print(f"Selected first {n_test_img} samples for visualization (no class info)")
+            # Debug info removed for cleaner output
         
         return view_data, view_labels, view_indices
     
@@ -211,18 +207,14 @@ class ExperimentRunner:
             train_view_data = train_data_tensor[view_indices].to(self.device)
             train_view_labels = train_labels_tensor[view_indices]
             
-            print(f"Selected training visualization samples: {len(view_indices)} total ({samples_per_class} per class)")
-            for label in sorted(class_samples.keys()):
-                label_name = class_names[label] if class_names and label < len(class_names) else f"Class {label}"
-                selected_for_label = [i for i in view_indices if train_labels_tensor[i].item() == label]
-                print(f"  Train {label_name}: indices {selected_for_label} (grouped by class)")
+            # Debug info removed for cleaner output
         else:
             # Use first n samples if no class information (deterministic)
             n_train_img = min(len(train_data_tensor), 10)
             view_indices = list(range(n_train_img))
             train_view_data = train_data_tensor[:n_train_img].to(self.device)
             train_view_labels = train_labels_tensor[:n_train_img] if train_labels_tensor is not None else None
-            print(f"Selected first {n_train_img} training samples for visualization (no class info)")
+            # Debug info removed for cleaner output
         
         return train_view_data, train_view_labels, view_indices
     
@@ -651,7 +643,6 @@ class ExperimentRunner:
                 )
             
             # 3. Show comprehensive latent space visualization
-            print("Generating comprehensive latent space analysis...")
             
             if test_data is not None and test_labels is not None:
                 # Show comprehensive 3-way t-SNE visualization (2x3 grid)

@@ -860,8 +860,8 @@ def visualize_three_way_latent_spaces(
     Visualize train, validation, and test data with reconstructions and latent spaces.
     
     Creates a 2x3 grid:
-    - Top row: Train, Validation, Test reconstructed images
-    - Bottom row: Train, Validation, Test latent spaces (t-SNE)
+    - Top row: Train, Validation, Test latent spaces (t-SNE)
+    - Bottom row: Train, Validation, Test reconstructed images
     
     Args:
         model: Trained autoencoder model
@@ -964,7 +964,7 @@ def visualize_three_way_latent_spaces(
     test_recon_tsne = TSNE(perplexity=test_recon_perplexity, n_components=2, init='pca', max_iter=5000, random_state=654)
     test_recon_low_dim = test_recon_tsne.fit_transform(test_reconstructed)
     
-    # Calculate silhouette scores
+    # Calculate silhouette scores for both latent spaces and reconstructed images
     def safe_silhouette(embeddings, labels):
         try:
             if len(np.unique(labels)) > 1:
@@ -973,50 +973,59 @@ def visualize_three_way_latent_spaces(
             pass
         return None
     
+    # Silhouette scores for latent spaces
     train_silhouette = safe_silhouette(train_low_dim, train_plot_labels)
     validation_silhouette = safe_silhouette(validation_low_dim, validation_plot_labels)
     test_silhouette = safe_silhouette(test_low_dim, test_plot_labels)
     
-    # Create 2x3 grid: Top row = reconstructed images, Bottom row = latent spaces
+    # Silhouette scores for reconstructed images
+    train_recon_silhouette = safe_silhouette(train_recon_low_dim, train_plot_labels)
+    validation_recon_silhouette = safe_silhouette(validation_recon_low_dim, validation_plot_labels)
+    test_recon_silhouette = safe_silhouette(test_recon_low_dim, test_plot_labels)
+    
+    # Create 2x3 grid: Top row = latent spaces, Bottom row = reconstructed images  
     fig, axes = plt.subplots(2, 3, figsize=figure_size)
     
     datasets = [
-        ("Training", train_recon_low_dim, train_low_dim, train_plot_labels, train_silhouette),
-        ("Validation", validation_recon_low_dim, validation_low_dim, validation_plot_labels, validation_silhouette),
-        ("Test", test_recon_low_dim, test_low_dim, test_plot_labels, test_silhouette)
+        ("Training", train_low_dim, train_recon_low_dim, train_plot_labels, train_silhouette, train_recon_silhouette),
+        ("Validation", validation_low_dim, validation_recon_low_dim, validation_plot_labels, validation_silhouette, validation_recon_silhouette),
+        ("Test", test_low_dim, test_recon_low_dim, test_plot_labels, test_silhouette, test_recon_silhouette)
     ]
     
-    for i, (dataset_name, recon_embs, latent_embs, labels, silhouette) in enumerate(datasets):
+    for i, (dataset_name, latent_embs, recon_embs, labels, latent_silhouette, recon_silhouette) in enumerate(datasets):
         unique_labels = np.unique(labels)
         colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_labels)))
         
-        # Top row: Reconstructed images t-SNE
+        # Top row: Latent space t-SNE
         for j, label in enumerate(unique_labels):
             mask = labels == label
             axes[0, i].scatter(
-                recon_embs[mask, 0], recon_embs[mask, 1],
-                c=[colors[j]], alpha=0.7, s=50, edgecolors='none',
-                label=class_names[label] if class_names is not None else f"Class {label}"
-            )
-        
-        axes[0, i].set_title(f"{dataset_name}: Reconstructed Images ({len(recon_embs)} images)", fontsize=12)
-        axes[0, i].legend(fontsize=8)
-        axes[0, i].grid(alpha=0.3)
-        axes[0, i].set_xlabel('t-SNE Component 1')
-        axes[0, i].set_ylabel('t-SNE Component 2')
-        
-        # Bottom row: Latent space t-SNE
-        for j, label in enumerate(unique_labels):
-            mask = labels == label
-            axes[1, i].scatter(
                 latent_embs[mask, 0], latent_embs[mask, 1],
                 c=[colors[j]], alpha=0.7, s=50, edgecolors='none',
                 label=class_names[label] if class_names is not None else f"Class {label}"
             )
         
         title = f"{dataset_name}: Latent Space ({len(latent_embs)} images)"
-        if silhouette is not None:
-            title += f"\nSilhouette Score: {silhouette:.3f}"
+        if latent_silhouette is not None:
+            title += f"\nSilhouette Score: {latent_silhouette:.3f}"
+        axes[0, i].set_title(title, fontsize=12)
+        axes[0, i].legend(fontsize=8)
+        axes[0, i].grid(alpha=0.3)
+        axes[0, i].set_xlabel('t-SNE Component 1')
+        axes[0, i].set_ylabel('t-SNE Component 2')
+        
+        # Bottom row: Reconstructed images t-SNE
+        for j, label in enumerate(unique_labels):
+            mask = labels == label
+            axes[1, i].scatter(
+                recon_embs[mask, 0], recon_embs[mask, 1],
+                c=[colors[j]], alpha=0.7, s=50, edgecolors='none',
+                label=class_names[label] if class_names is not None else f"Class {label}"
+            )
+        
+        title = f"{dataset_name}: Reconstructed Images ({len(recon_embs)} images)"
+        if recon_silhouette is not None:
+            title += f"\nSilhouette Score: {recon_silhouette:.3f}"
         axes[1, i].set_title(title, fontsize=12)
         axes[1, i].legend(fontsize=8)
         axes[1, i].grid(alpha=0.3)

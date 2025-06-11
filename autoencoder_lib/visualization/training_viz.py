@@ -996,6 +996,7 @@ def plot_systematic_training_curves(
 ) -> None:
     """
     Plot training curves organized by architecture with latent dimensions as legend.
+    Features dual x-axis (training steps + epochs) and fixed validation loss plotting.
     
     Args:
         systematic_results: Dictionary with structure {architecture: [experiment_results]}
@@ -1009,7 +1010,7 @@ def plot_systematic_training_curves(
         print("No results to plot")
         return
     
-    # Create subplots - 2 columns (train/test) × n_architectures rows
+    # Create subplots - 2 columns (train/validation) × n_architectures rows
     fig, axes = plt.subplots(n_archs, 2, figsize=figure_size)
     
     # Handle single architecture case
@@ -1019,9 +1020,27 @@ def plot_systematic_training_curves(
     # Color map for different latent dimensions using rainbow colormap to match AutoEncoderJupyterTest.ipynb
     colors = plt.cm.rainbow(np.linspace(0, 1, 10))
     
+    def _calculate_epoch_labels_systematic(num_steps, epochs):
+        """Calculate epoch labels for systematic experiments with fewer training steps"""
+        if epochs <= 0 or num_steps <= 0:
+            return []
+        
+        # For systematic experiments, assume simpler recording (mostly end-of-epoch)
+        steps_per_epoch = max(1, num_steps / epochs)
+        
+        epoch_labels = []
+        for step in range(num_steps):
+            epoch_pos = (step + 1) / steps_per_epoch
+            if epoch_pos == int(epoch_pos):
+                epoch_labels.append(f"{int(epoch_pos)}")
+            else:
+                epoch_labels.append(f"{epoch_pos:.1f}")
+        
+        return epoch_labels
+    
     for arch_idx, (architecture, results) in enumerate(systematic_results.items()):
         train_ax = axes[arch_idx, 0]
-        test_ax = axes[arch_idx, 1]
+        val_ax = axes[arch_idx, 1]
         
         # Group results by latent dimension
         latent_groups = {}
@@ -1031,6 +1050,10 @@ def plot_systematic_training_curves(
                 latent_groups[latent_dim] = []
             latent_groups[latent_dim].append(result)
         
+        # Track if we need secondary x-axis for this architecture
+        max_steps = 0
+        has_epochs = False
+        
         # Plot for each latent dimension
         color_idx = 0
         for latent_dim in sorted(latent_groups.keys()):
@@ -1039,34 +1062,83 @@ def plot_systematic_training_curves(
             for result in latent_groups[latent_dim]:
                 history = result['history']
                 
-                # Extract training and test losses
+                # Extract training and validation losses (not test_loss)
                 train_losses = history.get('train_loss', [])
-                test_losses = history.get('test_loss', [])
+                val_losses = history.get('validation_loss', [])
+                epochs = history.get('epochs', 0)
                 
                 if train_losses:
                     steps = range(1, len(train_losses) + 1)
                     train_ax.plot(steps, train_losses, color=color, alpha=0.7, 
-                                linewidth=2, label=f'Latent {latent_dim}' if result == latent_groups[latent_dim][0] else "")
+                                linewidth=2, label=f'dim={latent_dim}' if result == latent_groups[latent_dim][0] else "")
+                    max_steps = max(max_steps, len(train_losses))
+                    if epochs > 0:
+                        has_epochs = True
                 
-                if test_losses:
-                    steps = range(1, len(test_losses) + 1)
-                    test_ax.plot(steps, test_losses, color=color, alpha=0.7, 
-                               linewidth=2, label=f'Latent {latent_dim}' if result == latent_groups[latent_dim][0] else "")
+                if val_losses:
+                    steps = range(1, len(val_losses) + 1)
+                    val_ax.plot(steps, val_losses, color=color, alpha=0.7, 
+                               linewidth=2, label=f'dim={latent_dim}' if result == latent_groups[latent_dim][0] else "")
+                    max_steps = max(max_steps, len(val_losses))
+                    if epochs > 0:
+                        has_epochs = True
             
             color_idx += 1
         
-        # Set titles and labels
-        train_ax.set_title(f'{architecture}: Train Loss vs. Training Steps', fontsize=12, fontweight='bold')
-        train_ax.set_xlabel('Training Steps')
-        train_ax.set_ylabel('Training Loss')
+        # Set titles and labels for primary axes
+        train_ax.set_title(f'{architecture}: Training Loss vs. Steps', fontsize=12, fontweight='bold')
+        train_ax.set_xlabel('Training Steps', fontsize=10)
+        train_ax.set_ylabel('Training Loss', fontsize=10)
         train_ax.grid(True, alpha=0.3)
-        train_ax.legend()
+        train_ax.legend(fontsize=9)
         
-        test_ax.set_title(f'{architecture}: Test Loss vs. Training Steps', fontsize=12, fontweight='bold')
-        test_ax.set_xlabel('Training Steps')
-        test_ax.set_ylabel('Test Loss')
-        test_ax.grid(True, alpha=0.3)
-        test_ax.legend()
+        val_ax.set_title(f'{architecture}: Validation Loss vs. Steps', fontsize=12, fontweight='bold')
+        val_ax.set_xlabel('Training Steps', fontsize=10)
+        val_ax.set_ylabel('Validation Loss', fontsize=10)
+        val_ax.grid(True, alpha=0.3)
+        val_ax.legend(fontsize=9)
+        
+        # Add secondary x-axis showing epochs if we have epoch information
+        if has_epochs and max_steps > 0:
+            # Get epoch info from first result that has it
+            epochs_info = 0
+            for latent_dim in sorted(latent_groups.keys()):
+                for result in latent_groups[latent_dim]:
+                    epochs_info = result['history'].get('epochs', 0)
+                    if epochs_info > 0:
+                        break
+                if epochs_info > 0:
+                    break
+            
+            if epochs_info > 0:
+                # Create secondary x-axis for training plot
+                train_ax2 = train_ax.twiny()
+                train_ax2.set_xlim(train_ax.get_xlim())
+                
+                # Calculate epoch tick positions
+                epoch_ticks = []
+                epoch_labels = []
+                if max_steps > 0 and epochs_info > 0:
+                    steps_per_epoch = max_steps / epochs_info
+                    for epoch in range(1, epochs_info + 1):
+                        tick_pos = epoch * steps_per_epoch
+                        if tick_pos <= max_steps:
+                            epoch_ticks.append(tick_pos)
+                            epoch_labels.append(str(epoch))
+                
+                if epoch_ticks:
+                    train_ax2.set_xticks(epoch_ticks)
+                    train_ax2.set_xticklabels(epoch_labels, fontsize=9)
+                    train_ax2.set_xlabel('Epochs', fontsize=10)
+                
+                # Create secondary x-axis for validation plot
+                val_ax2 = val_ax.twiny()
+                val_ax2.set_xlim(val_ax.get_xlim())
+                
+                if epoch_ticks:
+                    val_ax2.set_xticks(epoch_ticks)
+                    val_ax2.set_xticklabels(epoch_labels, fontsize=9)
+                    val_ax2.set_xlabel('Epochs', fontsize=10)
     
     plt.suptitle('Training Progress by Architecture and Latent Dimension', fontsize=16, fontweight='bold')
     plt.tight_layout()

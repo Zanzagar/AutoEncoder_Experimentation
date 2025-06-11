@@ -615,6 +615,23 @@ def visualize_side_by_side_latent_spaces(
                                          n_components=2, init='pca', max_iter=5000, random_state=789)  # Different seed
             comparison_recon_low_dim = comparison_recon_tsne.fit_transform(comparison_reconstructed[:comparison_plot_only])
             
+            # Calculate silhouette scores for reconstructed images
+            train_recon_silhouette = None
+            if len(np.unique(train_plot_labels)) > 1:
+                try:
+                    train_recon_silhouette = silhouette_score(train_recon_low_dim, train_plot_labels)
+                except Exception as e:
+                    if verbose:
+                        print(f"Could not calculate train reconstructed silhouette score: {e}")
+            
+            comparison_recon_silhouette = None
+            if len(np.unique(comparison_plot_labels)) > 1:
+                try:
+                    comparison_recon_silhouette = silhouette_score(comparison_recon_low_dim, comparison_plot_labels)
+                except Exception as e:
+                    if verbose:
+                        print(f"Could not calculate comparison reconstructed silhouette score: {e}")
+            
             # Create 2x2 grid
             fig, axes = plt.subplots(2, 2, figsize=figure_size)
             axes = axes.flatten()
@@ -672,7 +689,10 @@ def visualize_side_by_side_latent_spaces(
                     label=class_names[label] if class_names is not None else f"Class {label}",
                     alpha=0.7, s=50, edgecolors='none'
                 )
-            axes[2].set_title(f"Train Reconstructed Images ({len(train_data)} images)", fontsize=12)
+            train_recon_title = f"Train Reconstructed Images ({len(train_data)} images)"
+            if train_recon_silhouette is not None:
+                train_recon_title += f"\nSilhouette Score: {train_recon_silhouette:.3f}"
+            axes[2].set_title(train_recon_title, fontsize=12)
             axes[2].legend(fontsize=8)
             axes[2].grid(alpha=0.3)
             axes[2].set_xlabel('t-SNE Component 1')
@@ -687,7 +707,10 @@ def visualize_side_by_side_latent_spaces(
                     label=class_names[label] if class_names is not None else f"Class {label}",
                     alpha=0.7, s=50, edgecolors='none'
                 )
-            axes[3].set_title(f"{comparison_type} Reconstructed Images ({len(comparison_data)} images)", fontsize=12)
+            comparison_recon_title = f"{comparison_type} Reconstructed Images ({len(comparison_data)} images)"
+            if comparison_recon_silhouette is not None:
+                comparison_recon_title += f"\nSilhouette Score: {comparison_recon_silhouette:.3f}"
+            axes[3].set_title(comparison_recon_title, fontsize=12)
             axes[3].legend(fontsize=8)
             axes[3].grid(alpha=0.3)
             axes[3].set_xlabel('t-SNE Component 1')

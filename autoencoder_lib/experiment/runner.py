@@ -650,7 +650,7 @@ class ExperimentRunner:
                     'Final Results - Test: Original vs. Reconstructed'
                 )
             
-            # 2. Show comprehensive latent space visualization
+            # 3. Show comprehensive latent space visualization
             print("Generating comprehensive latent space analysis...")
             
             if test_data is not None and test_labels is not None:
@@ -663,7 +663,7 @@ class ExperimentRunner:
                     )
                 except Exception as e:
                     print(f"Warning: Could not create comprehensive 3-way visualization: {e}")
-                    # Fallback to 2-way visualization
+                    # Fallback to 2-way visualization - keep test_silhouette as None
                     try:
                         final_train_silhouette, final_validation_silhouette = self.visualize_latent_space_side_by_side(
                             model, train_data_tensor, train_labels_tensor, validation_data, validation_labels,
@@ -672,7 +672,7 @@ class ExperimentRunner:
                     except Exception as e2:
                         print(f"Warning: Could not create fallback visualization: {e2}")
             else:
-                # Show 2-way visualization (train vs validation only)
+                # Show 2-way visualization (train vs validation only) - keep test_silhouette as None
                 try:
                     final_train_silhouette, final_validation_silhouette = self.visualize_latent_space_side_by_side(
                         model, train_data_tensor, train_labels_tensor, validation_data, validation_labels,
